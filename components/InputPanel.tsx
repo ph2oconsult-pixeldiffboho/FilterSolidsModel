@@ -3,7 +3,9 @@ import React from "react";
 import { Card, CardBody, CardHeader, NumField, Select, SectionTitle } from "./ui";
 import { CinComponents, FilterType, ShcInputs, SolidsKey, SolidsFraction, SOLIDS,
   defaultLeffFactor, computeCin, MediaLayer, defaultLayers, MEDIA_PROPS,
-  CoagulationRegime } from "@/lib/shc";
+  CoagulationRegime, DOSE_CONV } from "@/lib/shc";
+
+export type DoseBasis = "product" | "metal";
 
 export interface PanelState {
   // filter
@@ -23,6 +25,15 @@ export interface PanelState {
   // C_in components
   c: CinComponents;
 
+  // Coagulant dose display basis for stream A.
+  // 'product' (default): doses are mg/L of supplied product (alum 14·H₂O,
+  //   PACl product, FeCl₃ anhydrous) — what plants meter.
+  // 'metal': doses are mg/L as the trivalent metal (Al³⁺ for alum and PACl,
+  //   Fe³⁺ for ferric) — common in research and lab reporting.
+  // Internally the model always stores 'product' basis; this is a display-
+  // and-input toggle only.
+  doseBasisA: DoseBasis;
+
   // Optional two-stream blend mode. When blend.enabled is true, the C_in is
   // computed as a flow-weighted blend of two streams (e.g. lime-softened well
   // water + alum-clarified surface water joining ahead of common filters).
@@ -33,6 +44,7 @@ export interface PanelState {
     labelA: string;
     labelB: string;
     cB: CinComponents;     // dose set for stream B
+    doseBasisB: DoseBasis; // basis for displaying / inputting stream B doses
   };
 
   // Optional filter area (m²) — display-only, does not affect any model
@@ -69,6 +81,7 @@ export function defaultPanelState(): PanelState {
       pac_mgL: 0,
       regime: "sweep",
     },
+    doseBasisA: "product",
     blend: {
       enabled: false,
       fractionA: 0.5,
@@ -86,6 +99,7 @@ export function defaultPanelState(): PanelState {
         pac_mgL: 0,
         regime: "sweep",
       },
+      doseBasisB: "product",
     },
     measuredShcA: undefined,
   };
@@ -380,16 +394,28 @@ export function InputPanel({
               {state.blend.labelA} ({(fA * 100).toFixed(0)} %)
             </div>
           )}
-          <div className="mb-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
             <Select<CoagulationRegime>
               label="Coagulation regime"
               value={state.c.regime ?? "sweep"}
               onChange={v => setC("regime", v)}
               options={[
-                { value: "sweep", label: "Sweep flocculation (large gel-like flocs, full hydroxide yield)" },
-                { value: "charge_neutralisation", label: "Charge neutralisation (small dense flocs, low yield)" },
+                { value: "sweep", label: "Sweep flocculation" },
+                { value: "charge_neutralisation", label: "Charge neutralisation" },
               ]}
-              hint="Defines floc morphology — typical sweep at pH 6.5–8 / dose >10 mg/L; CN at pH 5–6 / lower dose, but regime is the diagnostic, not the operating window."
+              hint="Defines floc morphology — sweep typical pH 6.5–8 / dose >10 mg/L; CN typical pH 5–6 / lower dose."
+            />
+            <Select<DoseBasis>
+              label="Coagulant dose basis"
+              value={state.doseBasisA}
+              onChange={v => set("doseBasisA", v)}
+              options={[
+                { value: "product", label: "as product (alum-14, PACl, FeCl₃)" },
+                { value: "metal",   label: "as metal (mg/L Al³⁺ or Fe³⁺)" },
+              ]}
+              hint={state.doseBasisA === "metal"
+                ? "1 mg Al = 11.0 mg alum-14 = 18.9 mg PACl (10% Al₂O₃); 1 mg Fe = 2.90 mg FeCl₃"
+                : "Switch to metal basis to compare alum, PACl, ferric on like-for-like Al³⁺ / Fe³⁺ basis"}
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -398,12 +424,33 @@ export function InputPanel({
             <NumField label="Turbidity → TSS" unit="mg/L per NTU" step={0.1} min={0.1} max={5}
               value={state.c.ntu_to_mgL} onChange={v => setC("ntu_to_mgL", v)}
               hint="1.0–2.5 typical" />
-            <NumField label="Alum (14·H₂O) dose" unit="mg/L" step={1} min={0} max={500}
-              value={state.c.alum_mgL} onChange={v => setC("alum_mgL", v)} />
-            <NumField label="PACl dose" unit="mg/L" step={1} min={0} max={500}
-              value={state.c.pacl_mgL} onChange={v => setC("pacl_mgL", v)} />
-            <NumField label="Ferric chloride dose" unit="mg/L" step={1} min={0} max={500}
-              value={state.c.ferric_mgL} onChange={v => setC("ferric_mgL", v)} />
+            {state.doseBasisA === "product" ? (
+              <NumField label="Alum (14·H₂O) dose" unit="mg/L product" step={1} min={0} max={500}
+                value={state.c.alum_mgL} onChange={v => setC("alum_mgL", v)} />
+            ) : (
+              <NumField label="Alum dose" unit="mg/L as Al" step={0.1} min={0} max={50}
+                value={state.c.alum_mgL / DOSE_CONV.alum_mgPerMgAl}
+                onChange={v => setC("alum_mgL", v * DOSE_CONV.alum_mgPerMgAl)}
+                hint={`= ${state.c.alum_mgL.toFixed(1)} mg/L alum-14`} />
+            )}
+            {state.doseBasisA === "product" ? (
+              <NumField label="PACl dose" unit="mg/L product" step={1} min={0} max={500}
+                value={state.c.pacl_mgL} onChange={v => setC("pacl_mgL", v)} />
+            ) : (
+              <NumField label="PACl dose" unit="mg/L as Al" step={0.1} min={0} max={50}
+                value={state.c.pacl_mgL / DOSE_CONV.pacl_mgPerMgAl}
+                onChange={v => setC("pacl_mgL", v * DOSE_CONV.pacl_mgPerMgAl)}
+                hint={`= ${state.c.pacl_mgL.toFixed(1)} mg/L PACl (10% Al₂O₃ basis)`} />
+            )}
+            {state.doseBasisA === "product" ? (
+              <NumField label="Ferric chloride dose" unit="mg/L product" step={1} min={0} max={500}
+                value={state.c.ferric_mgL} onChange={v => setC("ferric_mgL", v)} />
+            ) : (
+              <NumField label="Ferric dose" unit="mg/L as Fe" step={0.1} min={0} max={50}
+                value={state.c.ferric_mgL / DOSE_CONV.ferric_mgPerMgFe}
+                onChange={v => setC("ferric_mgL", v * DOSE_CONV.ferric_mgPerMgFe)}
+                hint={`= ${state.c.ferric_mgL.toFixed(1)} mg/L FeCl₃`} />
+            )}
             <NumField label="Lime → CaCO₃ path" unit="mg/L lime" step={1} min={0} max={500}
               value={state.c.lime_caco3_mgL} onChange={v => setC("lime_caco3_mgL", v)}
               hint="Ca-hardness fraction" />
@@ -429,7 +476,7 @@ export function InputPanel({
               <div className="text-[11px] font-medium text-blue-800 mb-1.5">
                 {state.blend.labelB} ({((1 - fA) * 100).toFixed(0)} %)
               </div>
-              <div className="mb-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
                 <Select<CoagulationRegime>
                   label="Coagulation regime"
                   value={state.blend.cB.regime ?? "sweep"}
@@ -439,18 +486,48 @@ export function InputPanel({
                     { value: "charge_neutralisation", label: "Charge neutralisation" },
                   ]}
                 />
+                <Select<DoseBasis>
+                  label="Coagulant dose basis"
+                  value={state.blend.doseBasisB}
+                  onChange={v => setBlend("doseBasisB", v)}
+                  options={[
+                    { value: "product", label: "as product" },
+                    { value: "metal",   label: "as metal (Al³⁺ / Fe³⁺)" },
+                  ]}
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <NumField label="Filter influent turbidity" unit="NTU" step={0.1} min={0} max={500}
                   value={state.blend.cB.influent_NTU} onChange={v => setCB("influent_NTU", v)} />
                 <NumField label="Turbidity → TSS" unit="mg/L per NTU" step={0.1} min={0.1} max={5}
                   value={state.blend.cB.ntu_to_mgL} onChange={v => setCB("ntu_to_mgL", v)} />
-                <NumField label="Alum (14·H₂O) dose" unit="mg/L" step={1} min={0} max={500}
-                  value={state.blend.cB.alum_mgL} onChange={v => setCB("alum_mgL", v)} />
-                <NumField label="PACl dose" unit="mg/L" step={1} min={0} max={500}
-                  value={state.blend.cB.pacl_mgL} onChange={v => setCB("pacl_mgL", v)} />
-                <NumField label="Ferric chloride dose" unit="mg/L" step={1} min={0} max={500}
-                  value={state.blend.cB.ferric_mgL} onChange={v => setCB("ferric_mgL", v)} />
+                {state.blend.doseBasisB === "product" ? (
+                  <NumField label="Alum (14·H₂O) dose" unit="mg/L product" step={1} min={0} max={500}
+                    value={state.blend.cB.alum_mgL} onChange={v => setCB("alum_mgL", v)} />
+                ) : (
+                  <NumField label="Alum dose" unit="mg/L as Al" step={0.1} min={0} max={50}
+                    value={state.blend.cB.alum_mgL / DOSE_CONV.alum_mgPerMgAl}
+                    onChange={v => setCB("alum_mgL", v * DOSE_CONV.alum_mgPerMgAl)}
+                    hint={`= ${state.blend.cB.alum_mgL.toFixed(1)} mg/L alum-14`} />
+                )}
+                {state.blend.doseBasisB === "product" ? (
+                  <NumField label="PACl dose" unit="mg/L product" step={1} min={0} max={500}
+                    value={state.blend.cB.pacl_mgL} onChange={v => setCB("pacl_mgL", v)} />
+                ) : (
+                  <NumField label="PACl dose" unit="mg/L as Al" step={0.1} min={0} max={50}
+                    value={state.blend.cB.pacl_mgL / DOSE_CONV.pacl_mgPerMgAl}
+                    onChange={v => setCB("pacl_mgL", v * DOSE_CONV.pacl_mgPerMgAl)}
+                    hint={`= ${state.blend.cB.pacl_mgL.toFixed(1)} mg/L PACl`} />
+                )}
+                {state.blend.doseBasisB === "product" ? (
+                  <NumField label="Ferric chloride dose" unit="mg/L product" step={1} min={0} max={500}
+                    value={state.blend.cB.ferric_mgL} onChange={v => setCB("ferric_mgL", v)} />
+                ) : (
+                  <NumField label="Ferric dose" unit="mg/L as Fe" step={0.1} min={0} max={50}
+                    value={state.blend.cB.ferric_mgL / DOSE_CONV.ferric_mgPerMgFe}
+                    onChange={v => setCB("ferric_mgL", v * DOSE_CONV.ferric_mgPerMgFe)}
+                    hint={`= ${state.blend.cB.ferric_mgL.toFixed(1)} mg/L FeCl₃`} />
+                )}
                 <NumField label="Lime → CaCO₃ path" unit="mg/L lime" step={1} min={0} max={500}
                   value={state.blend.cB.lime_caco3_mgL} onChange={v => setCB("lime_caco3_mgL", v)} />
                 <NumField label="Lime → Mg(OH)₂ path" unit="mg/L lime" step={1} min={0} max={500}

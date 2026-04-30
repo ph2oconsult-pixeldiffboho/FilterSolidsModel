@@ -919,6 +919,30 @@ export const FLAG_LABELS: Record<FlagTier, { label: string; tone: string; descri
 // Convenience: compute C_in from individual contributions
 export type CoagulationRegime = "sweep" | "charge_neutralisation";
 
+// ----------------------------------------------------------------------------
+// Coagulant dose basis conversion
+// ----------------------------------------------------------------------------
+// Plants meter coagulants as the supplied product (alum 14·H2O, FeCl3
+// anhydrous, PACl as supplied). Lab reports and chemistry papers more often
+// quote the dose as the metal equivalent — mg/L as Al³⁺ or Fe³⁺ — so doses
+// of different coagulants can be compared directly.
+//
+// Conversions used here (stoichiometric, anhydrous metal in product):
+//   Alum (Al₂(SO₄)₃·14H2O, MW 594): 2 mol Al / mol alum
+//     → 1 mg Al = 594/(2×26.98) = 11.01 mg alum
+//   FeCl3 anhydrous (MW 162.2):       1 mol Fe / mol
+//     → 1 mg Fe = 162.2/55.85 = 2.904 mg FeCl3
+//   PACl: variable; typical commercial product spec is 10% Al₂O₃ ≈ 5.3% Al
+//     → 1 mg Al = 18.87 mg PACl product (default; user can override basis)
+//
+// The model continues to store doses in product-mg/L; metal-mg/L is a
+// display-and-input convention applied in the UI via these constants.
+export const DOSE_CONV = {
+  alum_mgPerMgAl: 11.01,        // mg alum-14 per mg Al
+  ferric_mgPerMgFe: 2.904,      // mg FeCl3 (anhydrous) per mg Fe
+  pacl_mgPerMgAl: 18.87,        // mg PACl (10% Al2O3 default) per mg Al
+};
+
 export interface CinComponents {
   influent_NTU: number;
   ntu_to_mgL: number;     // typically 1.0–2.5 mg/L per NTU

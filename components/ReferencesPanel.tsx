@@ -72,6 +72,8 @@ const REFS: { group: string; items: Ref[] }[] = [
         used_for: "Mechanism review distinguishing sweep flocculation from charge neutralisation; floc morphology differences." },
       { cite: "Pernitsky, D.J. (2001). Coagulation 101 / Tech Transfer Conference, AWWA Research Foundation.",
         used_for: "Practical operating windows for sweep vs CN; pH and dose ranges as advisory." },
+      { cite: "Edzwald, J.K. & Tobiason, J.E. (2011). Chemical principles, source water composition, and water treatment principles. In: Water Quality & Treatment, 6th ed., AWWA/McGraw-Hill, Ch. 3.",
+        used_for: "Conventions for expressing coagulant dose: 'as product' (mg/L of supplied chemical) vs 'as metal' (mg/L Al³⁺ or Fe³⁺). Stoichiometric conversions used in the dose-basis toggle." },
       { cite: "Crittenden et al. (2012), MWH's Water Treatment, Ch. 9 (Coagulation).",
         used_for: "Coagulant species speciation; soluble vs precipitate fractions at different pH and dose." },
       { cite: "Cohen, Y. et al. (2017). High flux water purification using aluminium hydroxide hydrate gels. Sci. Rep. 7, PMC 5727224.",
