@@ -1015,6 +1015,25 @@ export const DOSE_CONV = {
   pacl_mgPerMgAl: 18.87,        // mg PACl (10% Al2O3 default) per mg Al
 };
 
+// Upstream stage mode controls how applied coagulant doses translate into the
+// filter-inlet C_in. Three options:
+//   'direct': everything dosed reaches the filter (direct/in-line filtration)
+//   'clarifier': a clarifier sits between dose and filter; user specifies
+//      removal_pct and the model applies it uniformly to all upstream solids.
+//      polymer_mgL is treated as POST-clarifier filter aid (no removal applied)
+//      because that's how plants run filter aid.
+//   'measured_inlet': user has measured the actual filter-inlet turbidity
+//      (settled water sampling); coagulant doses are ignored and silt is the
+//      only source of mass. This is the most reliable approach when settled
+//      water turbidity is known.
+export type UpstreamStage = "direct" | "clarifier" | "measured_inlet";
+
+export interface UpstreamStageConfig {
+  mode: UpstreamStage;
+  removal_pct?: number;     // 0–100; used when mode='clarifier'. Default 92.
+  // measured_inlet uses influent_NTU directly as the post-clarifier turbidity.
+}
+
 export interface CinComponents {
   influent_NTU: number;
   ntu_to_mgL: number;     // typically 1.0–2.5 mg/L per NTU
@@ -1032,10 +1051,13 @@ export interface CinComponents {
   // Defined by the floc morphology, not by dose or pH alone — typical CN
   // operating windows (pH 5–6, lower doses) are advisory not constraints.
   regime?: CoagulationRegime;
+  // Upstream stage: when omitted, defaults to 'direct'.
+  upstream?: UpstreamStageConfig;
 }
 
 export function computeCin(c: CinComponents) {
   const regime: CoagulationRegime = c.regime ?? "sweep";
+  const upstream: UpstreamStageConfig = c.upstream ?? { mode: "direct" };
 
   // Defensive clamping — negatives shouldn't reach here from the UI but the
   // model should not propagate physically meaningless values regardless.
@@ -1050,18 +1072,21 @@ export function computeCin(c: CinComponents) {
   const polymer = clamp(c.polymer_mgL);
   const pac = clamp(c.pac_mgL);
 
+  // For measured_inlet: the user-entered NTU is the SETTLED water turbidity,
+  // and the dose fields are ignored entirely (the measurement already includes
+  // residual floc carry-over). The polymer is still added because it's a
+  // filter aid dosed downstream of the clarifier.
+  const measuredMode = upstream.mode === "measured_inlet";
   const turbiditySolids = ntu * ntu_factor;       // -> silt
 
-  // Coagulant yields depend on the regime — in CN, much of the dose stays
-  // soluble and only a fraction precipitates as a thin surface layer.
-  // The destabilised colloids themselves are already counted via influent_NTU.
+  // Pre-clarifier (or direct) precipitate masses
   const alumKey:    SolidsKey = regime === "charge_neutralisation" ? "alum_cn"   : "alum";
   const paclKey:    SolidsKey = regime === "charge_neutralisation" ? "pacl_cn"   : "pacl";
   const ferricKey:  SolidsKey = regime === "charge_neutralisation" ? "ferric_cn" : "ferric";
 
-  const alumPrec  = alum   * (SOLIDS[alumKey].yield_c   ?? 0.26);
-  const paclPrec  = pacl   * (SOLIDS[paclKey].yield_c   ?? 0.22);
-  const fericPrec = ferric * (SOLIDS[ferricKey].yield_c ?? 0.66);
+  const alumPrec_pre  = measuredMode ? 0 : alum   * (SOLIDS[alumKey].yield_c   ?? 0.26);
+  const paclPrec_pre  = measuredMode ? 0 : pacl   * (SOLIDS[paclKey].yield_c   ?? 0.22);
+  const fericPrec_pre = measuredMode ? 0 : ferric * (SOLIDS[ferricKey].yield_c ?? 0.66);
 
   // Lime stoichiometry (per Section 5.2 of the SHC review, corrected):
   //   Ca-bicarbonate path: Ca(OH)2 + Ca(HCO3)2 → 2 CaCO3 + 2 H2O
@@ -1074,24 +1099,75 @@ export function computeCin(c: CinComponents) {
   //   Mg-bicarbonate path: Mg(HCO3)2 + 2 Ca(OH)2 → Mg(OH)2 + 2 CaCO3 + 2 H2O
   //     2 mol lime (148 g) produces 1 mol Mg(OH)2 (58 g) and 2 mol CaCO3 (200 g).
   //     Per mg lime: Mg(OH)2 = 58/148 ≈ 0.39, CaCO3 = 200/148 ≈ 1.35.
-  const caco3FromCa = lime_ca * 1.35;
-  const caco3FromMg = lime_mg * 1.35;
-  const mgoh2 = lime_mg * 0.39;
+  const caco3FromCa_pre = measuredMode ? 0 : lime_ca * 1.35;
+  const caco3FromMg_pre = measuredMode ? 0 : lime_mg * 1.35;
+  const mgoh2_pre = measuredMode ? 0 : lime_mg * 0.39;
+
+  const totalCaCO3_pre = caco3FromCa_pre + caco3FromMg_pre;
+
+  // Pre-clarifier silt also includes upstream raw-water solids from NTU.
+  // In 'measured_inlet' mode, the NTU IS the settled value, so silt isn't
+  // pre-clarifier — it's already filter-inlet.
+  const silt_pre = measuredMode ? 0 : turbiditySolids;
+  const pac_pre = measuredMode ? 0 : pac;
+
+  // Pre-clarifier total (what would reach the filter without clarification).
+  // For 'direct' mode, this equals the filter-inlet C_in. For 'clarifier'
+  // mode, this is the upstream loading; we apply removal_pct to get
+  // post-clarifier mass. For 'measured_inlet', this is informational only
+  // — the actual C_in comes from settled NTU + polymer.
+  const pre_total =
+    silt_pre + alumPrec_pre + paclPrec_pre + fericPrec_pre +
+    totalCaCO3_pre + mgoh2_pre + polymer + pac_pre;
+
+  // Apply clarifier removal if applicable.
+  // Removal applies to all upstream solids EXCEPT polymer (filter aid is dosed
+  // post-clarifier in conventional plants). User can override the default.
+  // The settled-water silt fraction includes residual floc carry-over so we
+  // also reduce the silt term accordingly.
+  let silt_filter = silt_pre;
+  let alumPrec  = alumPrec_pre;
+  let paclPrec  = paclPrec_pre;
+  let fericPrec = fericPrec_pre;
+  let caco3FromCa = caco3FromCa_pre;
+  let caco3FromMg = caco3FromMg_pre;
+  let mgoh2 = mgoh2_pre;
+  let pac_filter = pac_pre;
+
+  if (upstream.mode === "clarifier") {
+    const removalFrac = Math.min(1, Math.max(0, (upstream.removal_pct ?? 92) / 100));
+    const passThrough = 1 - removalFrac;
+    silt_filter   *= passThrough;
+    alumPrec      *= passThrough;
+    paclPrec      *= passThrough;
+    fericPrec     *= passThrough;
+    caco3FromCa   *= passThrough;
+    caco3FromMg   *= passThrough;
+    mgoh2         *= passThrough;
+    pac_filter    *= passThrough;
+  }
+
+  // Measured-inlet mode: silt IS the filter-inlet turbidity directly, all
+  // other upstream solids are zero.
+  if (measuredMode) {
+    silt_filter = turbiditySolids;
+  }
 
   const totalCaCO3 = caco3FromCa + caco3FromMg;
 
+  // Filter-inlet total (after upstream stage).
   const total =
-    turbiditySolids + alumPrec + paclPrec + fericPrec +
-    totalCaCO3 + mgoh2 + polymer + pac;
+    silt_filter + alumPrec + paclPrec + fericPrec +
+    totalCaCO3 + mgoh2 + polymer + pac_filter;
 
   const fractions: SolidsFraction[] = [];
   const push = (key: SolidsKey, mass: number) => {
     if (mass > 0 && total > 0) fractions.push({ solid: key, fraction: mass / total });
   };
-  push("silt", turbiditySolids);
+  push("silt", silt_filter);
   // Polymer and PAC follow the regime: in CN they're treated as alum_cn-equivalent
   // (because polymer in low-dose conditioning stays close to the colloid surface).
-  push(alumKey, alumPrec + polymer + pac);
+  push(alumKey, alumPrec + polymer + pac_filter);
   push(paclKey, paclPrec);
   push(ferricKey, fericPrec);
   push("caco3", totalCaCO3);
@@ -1103,7 +1179,7 @@ export function computeCin(c: CinComponents) {
   // These thresholds are approximate and intended to flag implausible inputs,
   // not enforce them. (See Pernitsky 2001, Crittenden et al. 2012.)
   const warnings: string[] = [];
-  if (regime === "charge_neutralisation") {
+  if (regime === "charge_neutralisation" && !measuredMode) {
     if (alum > 15)
       warnings.push(`Alum ${alum} mg/L with charge-neutralisation regime is implausible — at >15 mg/L the system tips into sweep regardless of pH due to Al(OH)₃ solubility. Reduce dose or set regime to sweep.`);
     if (pacl > 12)
@@ -1116,5 +1192,21 @@ export function computeCin(c: CinComponents) {
       warnings.push("Lime softening + charge-neutralisation regime in same stream is physically impossible — softening requires pH 10–11 while CN requires pH 5–6. Use blend mode to combine separately-treated streams.");
   }
 
-  return { total, fractions, warnings };
+  // Upstream-mode advisory warnings
+  if (upstream.mode === "clarifier") {
+    const removalPct = upstream.removal_pct ?? 92;
+    if (removalPct < 50)
+      warnings.push(`Clarifier removal of ${removalPct}% is unusually low — typical conventional clarifiers achieve 90–98% solids removal.`);
+    if (removalPct > 99)
+      warnings.push(`Clarifier removal of ${removalPct}% is unrealistically high — even well-operating clarifiers retain 1–5% carry-over.`);
+  }
+
+  // For measured-inlet mode, pre_clarifier_total is not meaningful — the
+  // user has bypassed the upstream-loading view by entering settled-water
+  // turbidity directly. Set equal to total so callers that display pre-
+  // clarifier loading don't show a misleading partial value (it would
+  // include the polymer field but no other upstream solids).
+  const pre_clarifier_total = measuredMode ? total : pre_total;
+
+  return { total, fractions, warnings, pre_clarifier_total };
 }
