@@ -59,12 +59,13 @@ export function NumField({
 }
 
 export function Select<T extends string>({
-  label, value, onChange, options, id,
+  label, value, onChange, options, hint, id,
 }: {
   label: string;
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
+  hint?: string;
   id?: string;
 }) {
   const inputId = id || label.replace(/\s+/g, "-").toLowerCase();
@@ -81,6 +82,7 @@ export function Select<T extends string>({
       >
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
+      {hint ? <span className="block text-[11px] text-slate-400 mt-0.5">{hint}</span> : null}
     </label>
   );
 }

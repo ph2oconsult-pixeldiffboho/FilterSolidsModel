@@ -55,6 +55,25 @@ export function ResultPanel({ result, title = "Model output" }: { result: ShcRes
           </div>
         </div>
 
+        {result.SHC_a > 0.01 && (
+          <div className="bg-cyan-50 border border-cyan-200 rounded px-3 py-2">
+            <div className="flex items-baseline justify-between gap-3">
+              <div>
+                <span className="text-[11px] uppercase tracking-wide text-cyan-700 font-medium">Wet-gel deposit</span>
+                <span className="ml-2 text-sm font-semibold tabular-nums text-cyan-900">
+                  {fmt(result.wetDepositVolume_Lm2, 1)} L/m²
+                </span>
+              </div>
+              <span className="text-[11px] text-cyan-700 tabular-nums">
+                {(result.wetDepositVolume_pctVoids * 100).toFixed(1)}% of bed voids
+              </span>
+            </div>
+            <div className="text-[11px] text-cyan-800 mt-1">
+              SHC_a is dry-mass; the deposit on the filter is hydrated gel ({fmt(result.wetDepositVolume_Lm2 / Math.max(result.SHC_a, 1e-6), 1)}× the dry volume). Sweep flocs carry more bound water than CN deposits.
+            </div>
+          </div>
+        )}
+
         <div>
           <h4 className="text-xs font-semibold uppercase text-slate-600 tracking-wide mb-1.5">
             Composition-weighted parameters

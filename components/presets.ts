@@ -160,6 +160,18 @@ export const PRESET_PAIRS: { id: string; label: string; A: Preset; B: Preset }[]
     B: { label: "Alum, no polymer", description: "Same alum dose, polymer off",
          apply: (s) => ({ ...alum(s), c: { ...alum(s).c, polymer_mgL: 0 } }) },
   },
+  {
+    id: "sweep-vs-cn",
+    label: "Sweep vs charge neutralisation",
+    A: { label: "Sweep regime (20 mg/L alum, pH ~7)",
+         description: "Conventional sweep flocculation — voluminous gel-like flocs (calibrated to AWWA design 200–250 m³/m²)",
+         apply: (s) => ({ ...s, c: { ...s.c, influent_NTU: 2, alum_mgL: 20, pacl_mgL: 0, ferric_mgL: 0,
+           lime_caco3_mgL: 0, lime_mgoh2_mgL: 0, polymer_mgL: 0.1, regime: "sweep" }, velocity: 8, t_max: 36 }) },
+    B: { label: "CN regime (5 mg/L alum, pH ~5.5)",
+         description: "Direct filtration — small dense flocs (calibrated to Anderson 2023, UFRV ~313 m³/m²)",
+         apply: (s) => ({ ...s, c: { ...s.c, influent_NTU: 0.5, alum_mgL: 5, pacl_mgL: 0, ferric_mgL: 0,
+           lime_caco3_mgL: 0, lime_mgoh2_mgL: 0, polymer_mgL: 0.05, regime: "charge_neutralisation" }, velocity: 4.5, t_max: 80 }) },
+  },
 ];
 
 export function applyPresetPair(id: string, base: PanelState): { A: PanelState; B: PanelState } | null {

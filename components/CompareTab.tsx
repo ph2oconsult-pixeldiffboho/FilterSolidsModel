@@ -29,8 +29,16 @@ export function CompareTab() {
   });
   const [presetId, setPresetId] = useState<string>("");
 
-  const resA = useMemo(() => computeShc(panelToInputs(scenarioA).inputs), [scenarioA]);
-  const resB = useMemo(() => computeShc(panelToInputs(scenarioB).inputs), [scenarioB]);
+  const resA = useMemo(() => {
+    const p = panelToInputs(scenarioA);
+    const r = computeShc(p.inputs);
+    return { ...r, warnings: [...p.cinWarnings, ...r.warnings] };
+  }, [scenarioA]);
+  const resB = useMemo(() => {
+    const p = panelToInputs(scenarioB);
+    const r = computeShc(p.inputs);
+    return { ...r, warnings: [...p.cinWarnings, ...r.warnings] };
+  }, [scenarioB]);
 
   const applyPreset = (id: string) => {
     setPresetId(id);

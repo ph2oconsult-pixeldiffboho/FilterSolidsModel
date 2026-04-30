@@ -2,7 +2,8 @@
 import React from "react";
 import { Card, CardBody, CardHeader, NumField, Select, SectionTitle } from "./ui";
 import { CinComponents, FilterType, ShcInputs, SolidsKey, SolidsFraction, SOLIDS,
-  defaultLeffFactor, computeCin, MediaLayer, defaultLayers, MEDIA_PROPS } from "@/lib/shc";
+  defaultLeffFactor, computeCin, MediaLayer, defaultLayers, MEDIA_PROPS,
+  CoagulationRegime } from "@/lib/shc";
 
 export interface PanelState {
   // filter
@@ -60,6 +61,7 @@ export function defaultPanelState(): PanelState {
       lime_mgoh2_mgL: 0,
       polymer_mgL: 0.1,
       pac_mgL: 0,
+      regime: "sweep",
     },
     blend: {
       enabled: false,
@@ -76,13 +78,20 @@ export function defaultPanelState(): PanelState {
         lime_mgoh2_mgL: 40,
         polymer_mgL: 0,
         pac_mgL: 0,
+        regime: "sweep",
       },
     },
     measuredShcA: undefined,
   };
 }
 
-export function panelToInputs(s: PanelState): { inputs: ShcInputs; cinTotal: number; cinA?: number; cinB?: number } {
+export function panelToInputs(s: PanelState): {
+  inputs: ShcInputs;
+  cinTotal: number;
+  cinA?: number;
+  cinB?: number;
+  cinWarnings: string[];
+} {
   const A = computeCin(s.c);
 
   // Compute the effective C_in and composition reaching the filter.
@@ -92,10 +101,16 @@ export function panelToInputs(s: PanelState): { inputs: ShcInputs; cinTotal: num
   let fractions: SolidsFraction[];
   let polymer_mgL: number;
   let cinB: number | undefined;
+  const cinWarnings: string[] = [...(A.warnings ?? [])];
 
   if (s.blend.enabled) {
     const B = computeCin(s.blend.cB);
     cinB = B.total;
+    cinWarnings.push(...(B.warnings ?? []).map(w => `Stream B: ${w}`));
+    // Tag stream A warnings as such
+    for (let i = 0; i < (A.warnings?.length ?? 0); i++) {
+      cinWarnings[i] = `Stream A: ${cinWarnings[i]}`;
+    }
     const fA = Math.max(0, Math.min(1, s.blend.fractionA));
     const fB = 1 - fA;
     total = fA * A.total + fB * B.total;
@@ -143,7 +158,7 @@ export function panelToInputs(s: PanelState): { inputs: ShcInputs; cinTotal: num
     composition: fractions,
     polymer_mgL,
   };
-  return { inputs, cinTotal: total, cinA: A.total, cinB };
+  return { inputs, cinTotal: total, cinA: A.total, cinB, cinWarnings };
 }
 
 export function InputPanel({
@@ -344,6 +359,18 @@ export function InputPanel({
               {state.blend.labelA} ({(fA * 100).toFixed(0)} %)
             </div>
           )}
+          <div className="mb-2">
+            <Select<CoagulationRegime>
+              label="Coagulation regime"
+              value={state.c.regime ?? "sweep"}
+              onChange={v => setC("regime", v)}
+              options={[
+                { value: "sweep", label: "Sweep flocculation (large gel-like flocs, full hydroxide yield)" },
+                { value: "charge_neutralisation", label: "Charge neutralisation (small dense flocs, low yield)" },
+              ]}
+              hint="Defines floc morphology — typical sweep at pH 6.5–8 / dose >10 mg/L; CN at pH 5–6 / lower dose, but regime is the diagnostic, not the operating window."
+            />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <NumField label="Filter influent turbidity" unit="NTU" step={0.1} min={0} max={500}
               value={state.c.influent_NTU} onChange={v => setC("influent_NTU", v)} />
@@ -380,6 +407,17 @@ export function InputPanel({
             <div className="mt-4 pt-3 border-t border-slate-200">
               <div className="text-[11px] font-medium text-blue-800 mb-1.5">
                 {state.blend.labelB} ({((1 - fA) * 100).toFixed(0)} %)
+              </div>
+              <div className="mb-2">
+                <Select<CoagulationRegime>
+                  label="Coagulation regime"
+                  value={state.blend.cB.regime ?? "sweep"}
+                  onChange={v => setCB("regime", v)}
+                  options={[
+                    { value: "sweep", label: "Sweep flocculation" },
+                    { value: "charge_neutralisation", label: "Charge neutralisation" },
+                  ]}
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <NumField label="Filter influent turbidity" unit="NTU" step={0.1} min={0} max={500}

@@ -153,12 +153,12 @@ export function SensitivityPanel({
           Showing how SHC and run length respond to {cfg.label.toLowerCase()} around the current value
           ({centre.toFixed(2)} {cfg.unit}). Other inputs held constant.
         </div>
-        <div className="h-56">
+        <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 8, right: 8, bottom: 22, left: 0 }}>
+            <LineChart data={data} margin={{ top: 8, right: 50, bottom: 38, left: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="x" tick={{ fontSize: 11 }}
-                     label={{ value: `${cfg.label} (${cfg.unit})`, position: "insideBottom", offset: -8, style: { fontSize: 11 } }} />
+                     label={{ value: `${cfg.label} (${cfg.unit})`, position: "insideBottom", offset: -22, style: { fontSize: 11 } }} />
               <YAxis yAxisId="L" orientation="left" tick={{ fontSize: 11 }}
                      label={{ value: "SHC (kg/m² or kg/m³)", angle: -90, position: "insideLeft", style: { fontSize: 11 } }} />
               <YAxis yAxisId="R" orientation="right" tick={{ fontSize: 11 }}

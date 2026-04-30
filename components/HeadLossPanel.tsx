@@ -24,6 +24,7 @@ export function HeadLossPanel({ result, title = "Head loss" }: { result: ShcResu
     clean: parseFloat((dev.h0).toFixed(3)),
     target: parseFloat(dev.h_T_target.toFixed(3)),
     mass: parseFloat(p.mass_loaded.toFixed(3)),
+    ufrv: parseFloat(p.ufrv.toFixed(1)),
   })) ?? [];
 
   return (
@@ -96,23 +97,29 @@ export function HeadLossPanel({ result, title = "Head loss" }: { result: ShcResu
                 <div className="font-semibold tabular-nums">{fmt(dev.development_rate_m_per_kgm2, 2)} m/(kg/m²)</div>
               </div>
             </div>
-            <div className="h-56">
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={curveData} margin={{ top: 8, right: 12, bottom: 22, left: 0 }}>
+                <LineChart data={curveData} margin={{ top: 8, right: 50, bottom: 38, left: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="t" tick={{ fontSize: 11 }}
-                         label={{ value: "Time (h)", position: "insideBottom", offset: -8, style: { fontSize: 11 } }} />
-                  <YAxis tick={{ fontSize: 11 }}
-                         label={{ value: "Head loss (m)", angle: -90, position: "insideLeft", style: { fontSize: 11 } }} />
+                         label={{ value: "Time (h)", position: "insideBottom", offset: -22, style: { fontSize: 11 } }} />
+                  <YAxis yAxisId="L" tick={{ fontSize: 11 }}
+                         label={{ value: "Head loss (m)", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 11 } }} />
+                  <YAxis yAxisId="R" orientation="right" tick={{ fontSize: 11 }}
+                         label={{ value: "UFRV (m³/m²)", angle: 90, position: "insideRight", offset: 10, style: { fontSize: 11 } }} />
                   <Tooltip
-                    formatter={(v: number, name: string) => [v.toFixed(3) + " m", name]}
+                    formatter={(v: number, name: string) =>
+                      name === "UFRV" ? [v.toFixed(0) + " m³/m²", name] : [v.toFixed(3) + " m", name]
+                    }
                     labelFormatter={(t) => `t = ${t} h`} />
-                  <ReferenceLine y={dev.h_T_target} stroke="#dc2626" strokeDasharray="4 4"
+                  <ReferenceLine yAxisId="L" y={dev.h_T_target} stroke="#dc2626" strokeDasharray="4 4"
                                  label={{ value: `Terminal h_T = ${dev.h_T_target.toFixed(2)} m`, fontSize: 10, fill: "#dc2626", position: "insideTopLeft" }} />
-                  <ReferenceLine y={dev.h0} stroke="#94a3b8" strokeDasharray="3 3"
+                  <ReferenceLine yAxisId="L" y={dev.h0} stroke="#94a3b8" strokeDasharray="3 3"
                                  label={{ value: `h₀ = ${dev.h0.toFixed(2)} m`, fontSize: 10, fill: "#64748b", position: "insideBottomLeft" }} />
-                  <Line type="monotone" dataKey="total" name="Total head loss"
+                  <Line yAxisId="L" type="monotone" dataKey="total" name="Total head loss"
                         stroke="#1f4e79" strokeWidth={2} dot={false} />
+                  <Line yAxisId="R" type="monotone" dataKey="ufrv" name="UFRV"
+                        stroke="#0e7c66" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

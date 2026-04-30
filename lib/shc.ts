@@ -3,8 +3,11 @@
 
 export type SolidsKey =
   | "alum"
+  | "alum_cn"
   | "pacl"
+  | "pacl_cn"
   | "ferric"
+  | "ferric_cn"
   | "caco3"
   | "caoh2"
   | "mgoh2"
@@ -14,45 +17,114 @@ export type SolidsKey =
 export interface SolidsProperties {
   key: SolidsKey;
   label: string;
-  rho_d: number;   // kg/m3 dry deposit density (midpoint)
-  sigma_b: number; // g/L of voids (midpoint)
-  k_h: number;     // m head per (m3/m2) per (mg/L)  [m·L / (m³·mg)]
-  yield_c?: number; // mg precipitate per mg coagulant dosed (where applicable)
+  // ρ_d is the dry-mass density of the AS-DEPOSITED material on the filter,
+  // i.e. dry mass divided by the wet-gel volume the deposit occupies in the
+  // bed voids. Freshly precipitated Al(OH)₃ and Fe(OH)₃ form hydrate gels
+  // (Al(OH)₃·xH₂O, typically x = 3–5) — most of the deposit volume is bound
+  // water trapped in the hydroxide scaffold (Wikipedia: aluminium hydroxide;
+  // PMC 5727224 on hydrate gel structure). The very low values for sweep
+  // hydroxide flocs (55–95 kg/m³ vs ~2400 kg/m³ for crystalline Al(OH)₃)
+  // reflect this: ~98% of the deposit volume is water of hydration. Sweep gel
+  // carries more bound water than CN's compact aggregates, hence lower ρ_d.
+  rho_d: number;   // kg/m3 dry-mass-per-wet-gel-volume (midpoint)
+  // σ_b is also on a DRY-MASS basis (Cleasby & Logsdon dry their filter sludge
+  // at 105°C to constant weight). The model is therefore internally consistent:
+  // C_in, mass loaded, SHC_a etc. are all dry-mass quantities.
+  sigma_b: number; // g (dry mass) per L of voids (midpoint)
+  k_h: number;     // m head per (m3/m2) per (mg/L) of dry mass [m·L / (m³·mg)]
+  yield_c?: number; // mg DRY precipitate per mg coagulant dosed (anhydrous Al(OH)₃ / Fe(OH)₃ basis)
   composition: string;
   notes: string;
 }
 
-// Midpoint values from Section 6.1 of the review
+// Midpoint values from Section 6.1 of the review.
+// "_cn" entries represent the same coagulant operated in a charge-neutralisation
+// regime: small, dense aggregates of destabilised colloids with thin metal-
+// hydroxide surface layer. The deposit is morphologically distinct from sweep —
+// denser, less compressible, with much lower hydroxide yield per mg of dose
+// because most of the dosed metal stays as soluble or small species rather than
+// precipitating as a voluminous gel. The regime is defined by floc morphology,
+// not by dose or pH alone (typical operating windows are pH 5–6 with low alum
+// or specific cationic polymers, but the regime can occur outside these).
+// CN parameter shifts informed by Liu et al. 2017, Ghernaout 2012,
+// Cleasby & Logsdon 1999, and Pernitsky 2001.
 export const SOLIDS: Record<SolidsKey, SolidsProperties> = {
   alum: {
     key: "alum",
-    label: "Aluminium hydroxide (alum floc)",
+    label: "Aluminium hydroxide (alum floc, sweep)",
     rho_d: 55,
     sigma_b: 11,
     k_h: 0.0022,
-    yield_c: 0.26, // alum 14·H2O
+    yield_c: 0.26, // alum 14·H2O, full stoichiometric
     composition: "Al(OH)₃·xH₂O",
-    notes: "Gelatinous, highly compressible. Worst-case for filter run length per unit mass.",
+    notes: "Gelatinous, highly compressible. Worst-case for filter run length per unit mass. Sweep regime — typical pH 6.5–8, dose 10–60 mg/L.",
+  },
+  alum_cn: {
+    key: "alum_cn",
+    label: "Alum CN deposit (charge neutralisation)",
+    // Parameter calibration (red-team v8): values softened from initial estimates
+    // to match literature midpoints rather than upper bounds.
+    //   ρ_d: +35% vs sweep (Bache & Gregory; fractal-dimension studies show
+    //        CN flocs are 20–50% denser; midpoint ≈ +35%)
+    //   σ_b: +9% vs sweep (denser deposits hold marginally more per unit voids
+    //        but smaller voids overall; net effect modest)
+    //   k_h: -32% vs sweep (Liu 2017; cake resistance studies show CN/sweep
+    //        ratios in 0.5–0.8× range; midpoint ≈ 0.68×)
+    //   yield_c: 0.05 (Pernitsky 2001 — at low CN-favouring doses, much of
+    //        the dosed Al stays soluble; overstated at higher doses)
+    rho_d: 75,
+    sigma_b: 12,
+    k_h: 0.0015,
+    yield_c: 0.05,
+    composition: "Destabilised colloid + thin Al(OH)₃ surface layer",
+    notes: "Charge-neutralisation regime — typical pH 5–6, dose 1–8 mg/L alum. Defined by floc morphology (small dense aggregates), not dose alone. At high dose (>15 mg/L) regime tips to sweep regardless of pH due to solubility.",
   },
   pacl: {
     key: "pacl",
-    label: "PACl floc",
+    label: "PACl floc (sweep)",
     rho_d: 80,
     sigma_b: 15,
     k_h: 0.0016,
     yield_c: 0.22,
     composition: "Al(OH)₃ (polymerised)",
-    notes: "Larger, denser, more shear-resistant than alum at equivalent Al dose.",
+    notes: "Larger, denser, more shear-resistant than alum at equivalent Al dose. Sweep regime.",
+  },
+  pacl_cn: {
+    key: "pacl_cn",
+    label: "PACl CN deposit",
+    // PACl pre-polymerised species are effective in CN at lower doses than
+    // alum; deposit is denser than alum-CN. Limited direct literature data —
+    // softened estimate, treat with caution.
+    rho_d: 110,
+    sigma_b: 16,
+    k_h: 0.0012,
+    yield_c: 0.06,
+    composition: "Destabilised colloid + PACl surface coating",
+    notes: "PACl in charge-neutralisation regime — pre-polymerised cationic species effective at lower doses than alum. Limited published parameter data; values are estimates.",
   },
   ferric: {
     key: "ferric",
-    label: "Ferric hydroxide (ferric floc)",
+    label: "Ferric hydroxide (ferric floc, sweep)",
     rho_d: 95,
     sigma_b: 17,
     k_h: 0.0014,
-    yield_c: 0.66, // FeCl3 anhydrous
+    yield_c: 0.66, // FeCl3 anhydrous, full stoichiometric
     composition: "Fe(OH)₃·xH₂O",
-    notes: "Tougher, denser, less compressible than Al floc. Holds shape better.",
+    notes: "Tougher, denser, less compressible than Al floc. Holds shape better. Sweep regime — typical pH 5.5–8.5.",
+  },
+  ferric_cn: {
+    key: "ferric_cn",
+    label: "Ferric CN deposit",
+    // Fe(OH)3 solubility is far lower than Al(OH)3 — at any pH above ~3, most
+    // dosed Fe precipitates. CN for ferric means low-dose with charge-driven
+    // mechanism, but yield is HIGHER than for alum-CN because precipitation
+    // happens regardless. Properties shift less dramatically.
+    rho_d: 125,
+    sigma_b: 18,
+    k_h: 0.0010,
+    yield_c: 0.30,
+    composition: "Destabilised colloid + Fe(OH)₃ (mostly precipitated)",
+    notes: "Ferric in charge-neutralisation regime — typical pH 4–6.5; less common than sweep. Higher yield than Al-CN because Fe(OH)₃ precipitates at most pH values.",
   },
   caco3: {
     key: "caco3",
@@ -520,6 +592,13 @@ export interface ShcResult {
   // theoretical ceilings
   SHC_v_ceiling: number;
   SHC_a_ceiling: number;
+  // Wet-gel deposit volume — the actual physical volume the deposit occupies
+  // on the filter, including water of hydration in the floc gel structure.
+  // For sweep flocs (low ρ_d) this is ~10–20× the dry-mass volume.
+  // Useful disclosure: shows engineers what's physically present, vs the
+  // dry-mass SHC convention used throughout the model.
+  wetDepositVolume_Lm2: number;   // L of wet gel per m² of filter area
+  wetDepositVolume_pctVoids: number; // fraction of bed voids occupied by wet deposit
   // for flagging when measured value provided
   flag?: FlagTier;
   ratio?: number;
@@ -718,6 +797,21 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
   const SHC_v_ceiling = porosity * 0.25 * rho_d_eff;
   const SHC_a_ceiling = SHC_v_ceiling * totalDepth;
 
+  // ---- Wet-gel deposit volume ----
+  // Dry-mass SHC_a divided by ρ_d_eff gives the actual physical wet-gel volume
+  // the deposit occupies on the filter. For sweep flocs (ρ_d ~55 kg/m³), this
+  // is ~18 L of wet gel per kg/m² of dry mass — i.e. a 1 kg/m² SHC_a deposit
+  // physically occupies ~18 L/m² (= 18 mm equivalent depth) of bed voids.
+  // Most of that volume is bound water in the hydrate gel structure.
+  // For dense deposits (CaCO₃ at ρ_d ~600), the ratio is ~1.7 L/kg, so
+  // the same dry-mass SHC carries far less wet-gel volume.
+  const wetDepositVolume_Lm2 = rho_d_eff > 0 ? (SHC_a / rho_d_eff) * 1000 : 0;
+  // Express as fraction of bed voids (porosity × totalDepth gives total void volume per m²)
+  const totalVoids_m3m2 = porosity * totalDepth;  // m³ voids per m² filter area
+  const wetDepositVolume_pctVoids = totalVoids_m3m2 > 0
+    ? (wetDepositVolume_Lm2 / 1000) / totalVoids_m3m2
+    : 0;
+
   // ---- Flag ----
   let flag: FlagTier | undefined;
   let ratio: number | undefined;
@@ -772,6 +866,7 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
     t_h, t_b, t_max, t_run, binding,
     UFRV, SHC_a, SHC_v,
     SHC_v_ceiling, SHC_a_ceiling,
+    wetDepositVolume_Lm2, wetDepositVolume_pctVoids,
     flag, ratio,
     warnings,
     ld,
@@ -798,6 +893,8 @@ export const FLAG_LABELS: Record<FlagTier, { label: string; tone: string; descri
 };
 
 // Convenience: compute C_in from individual contributions
+export type CoagulationRegime = "sweep" | "charge_neutralisation";
+
 export interface CinComponents {
   influent_NTU: number;
   ntu_to_mgL: number;     // typically 1.0–2.5 mg/L per NTU
@@ -808,13 +905,44 @@ export interface CinComponents {
   lime_mgoh2_mgL: number; // mg/L lime contributing to Mg(OH)2 path
   polymer_mgL: number;
   pac_mgL: number;
+  // Coagulation regime defines floc morphology and yield for this stream.
+  // Sweep: voluminous gel-like Al(OH)₃/Fe(OH)₃ enmeshing colloids (default).
+  // Charge neutralisation: small dense aggregates of destabilised colloids
+  //   with thin metal-hydroxide surface layer; much lower precipitate yield.
+  // Defined by the floc morphology, not by dose or pH alone — typical CN
+  // operating windows (pH 5–6, lower doses) are advisory not constraints.
+  regime?: CoagulationRegime;
 }
 
 export function computeCin(c: CinComponents) {
-  const turbiditySolids = c.influent_NTU * c.ntu_to_mgL;       // -> silt
-  const alumPrec  = c.alum_mgL * (SOLIDS.alum.yield_c   ?? 0.26);
-  const paclPrec  = c.pacl_mgL * (SOLIDS.pacl.yield_c   ?? 0.22);
-  const fericPrec = c.ferric_mgL * (SOLIDS.ferric.yield_c ?? 0.66);
+  const regime: CoagulationRegime = c.regime ?? "sweep";
+
+  // Defensive clamping — negatives shouldn't reach here from the UI but the
+  // model should not propagate physically meaningless values regardless.
+  const clamp = (x: number) => Math.max(0, x);
+  const ntu = clamp(c.influent_NTU);
+  const ntu_factor = clamp(c.ntu_to_mgL);
+  const alum = clamp(c.alum_mgL);
+  const pacl = clamp(c.pacl_mgL);
+  const ferric = clamp(c.ferric_mgL);
+  const lime_ca = clamp(c.lime_caco3_mgL);
+  const lime_mg = clamp(c.lime_mgoh2_mgL);
+  const polymer = clamp(c.polymer_mgL);
+  const pac = clamp(c.pac_mgL);
+
+  const turbiditySolids = ntu * ntu_factor;       // -> silt
+
+  // Coagulant yields depend on the regime — in CN, much of the dose stays
+  // soluble and only a fraction precipitates as a thin surface layer.
+  // The destabilised colloids themselves are already counted via influent_NTU.
+  const alumKey:    SolidsKey = regime === "charge_neutralisation" ? "alum_cn"   : "alum";
+  const paclKey:    SolidsKey = regime === "charge_neutralisation" ? "pacl_cn"   : "pacl";
+  const ferricKey:  SolidsKey = regime === "charge_neutralisation" ? "ferric_cn" : "ferric";
+
+  const alumPrec  = alum   * (SOLIDS[alumKey].yield_c   ?? 0.26);
+  const paclPrec  = pacl   * (SOLIDS[paclKey].yield_c   ?? 0.22);
+  const fericPrec = ferric * (SOLIDS[ferricKey].yield_c ?? 0.66);
+
   // Lime stoichiometry (per Section 5.2 of the SHC review, corrected):
   //   Ca-bicarbonate path: Ca(OH)2 + Ca(HCO3)2 → 2 CaCO3 + 2 H2O
   //     1 mol lime (74 g) produces 1 mol CaCO3 from the lime itself (100 g)
@@ -826,26 +954,47 @@ export function computeCin(c: CinComponents) {
   //   Mg-bicarbonate path: Mg(HCO3)2 + 2 Ca(OH)2 → Mg(OH)2 + 2 CaCO3 + 2 H2O
   //     2 mol lime (148 g) produces 1 mol Mg(OH)2 (58 g) and 2 mol CaCO3 (200 g).
   //     Per mg lime: Mg(OH)2 = 58/148 ≈ 0.39, CaCO3 = 200/148 ≈ 1.35.
-  const caco3FromCa = c.lime_caco3_mgL * 1.35;
-  const caco3FromMg = c.lime_mgoh2_mgL * 1.35;
-  const mgoh2 = c.lime_mgoh2_mgL * 0.39; // corrected from 0.78
+  const caco3FromCa = lime_ca * 1.35;
+  const caco3FromMg = lime_mg * 1.35;
+  const mgoh2 = lime_mg * 0.39;
 
   const totalCaCO3 = caco3FromCa + caco3FromMg;
 
   const total =
     turbiditySolids + alumPrec + paclPrec + fericPrec +
-    totalCaCO3 + mgoh2 + c.polymer_mgL + c.pac_mgL;
+    totalCaCO3 + mgoh2 + polymer + pac;
 
   const fractions: SolidsFraction[] = [];
   const push = (key: SolidsKey, mass: number) => {
     if (mass > 0 && total > 0) fractions.push({ solid: key, fraction: mass / total });
   };
   push("silt", turbiditySolids);
-  push("alum", alumPrec + c.polymer_mgL + c.pac_mgL); // treat polymer/PAC as alum-floc-equivalent
-  push("pacl", paclPrec);
-  push("ferric", fericPrec);
+  // Polymer and PAC follow the regime: in CN they're treated as alum_cn-equivalent
+  // (because polymer in low-dose conditioning stays close to the colloid surface).
+  push(alumKey, alumPrec + polymer + pac);
+  push(paclKey, paclPrec);
+  push(ferricKey, fericPrec);
   push("caco3", totalCaCO3);
   push("mgoh2", mgoh2);
 
-  return { total, fractions };
+  // Regime-plausibility warnings.
+  // CN regime requires keeping the metal hydroxide soluble — at high doses the
+  // solubility limit is exceeded and the system tips into sweep regardless of pH.
+  // These thresholds are approximate and intended to flag implausible inputs,
+  // not enforce them. (See Pernitsky 2001, Crittenden et al. 2012.)
+  const warnings: string[] = [];
+  if (regime === "charge_neutralisation") {
+    if (alum > 15)
+      warnings.push(`Alum ${alum} mg/L with charge-neutralisation regime is implausible — at >15 mg/L the system tips into sweep regardless of pH due to Al(OH)₃ solubility. Reduce dose or set regime to sweep.`);
+    if (pacl > 12)
+      warnings.push(`PACl ${pacl} mg/L with charge-neutralisation regime is implausible at this dose. Consider sweep regime.`);
+    if (ferric > 8)
+      warnings.push(`Ferric ${ferric} mg/L with charge-neutralisation regime is implausible — Fe(OH)₃ has very low solubility, so most dosed Fe precipitates regardless of pH.`);
+    // Lime softening operates at pH 10–11; CN regime requires pH 5–6.
+    // The two cannot coexist physically in one stream.
+    if (lime_ca > 0 || lime_mg > 0)
+      warnings.push("Lime softening + charge-neutralisation regime in same stream is physically impossible — softening requires pH 10–11 while CN requires pH 5–6. Use blend mode to combine separately-treated streams.");
+  }
+
+  return { total, fractions, warnings };
 }
