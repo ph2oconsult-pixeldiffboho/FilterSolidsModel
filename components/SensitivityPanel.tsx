@@ -11,7 +11,8 @@ import {
 type SweepVar =
   | "velocity" | "alum" | "ferric" | "polymer"
   | "temperature" | "C_eff" | "h_budget"
-  | "anth_depth" | "anth_de" | "anth_psi" | "anth_porosity";
+  | "anth_depth" | "anth_de" | "anth_psi" | "anth_porosity"
+  | "blend_ratio";
 
 const SWEEPS: Record<SweepVar, {
   label: string;
@@ -85,6 +86,12 @@ const SWEEPS: Record<SweepVar, {
     getValue: s => s.layers[0]?.porosity ?? 0,
     setValue: (s, v) => ({ ...s, layers: s.layers.map((l, i) => i === 0 ? { ...l, porosity: v } : l) }),
     range: c => [0.38, 0.42, 0.46, 0.50, 0.52, 0.54, 0.56, 0.60],
+  },
+  blend_ratio: {
+    label: "Blend: Stream A flow share", unit: "—",
+    getValue: s => s.blend.fractionA,
+    setValue: (s, v) => ({ ...s, blend: { ...s.blend, enabled: true, fractionA: Math.max(0, Math.min(1, v)) } }),
+    range: c => [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
   },
 };
 

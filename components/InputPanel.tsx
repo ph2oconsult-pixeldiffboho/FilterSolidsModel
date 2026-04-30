@@ -22,6 +22,18 @@ export interface PanelState {
   // C_in components
   c: CinComponents;
 
+  // Optional two-stream blend mode. When blend.enabled is true, the C_in is
+  // computed as a flow-weighted blend of two streams (e.g. lime-softened well
+  // water + alum-clarified surface water joining ahead of common filters).
+  // Stream A is `c` above; Stream B is `blend.cB`. fractionA is 0–1.
+  blend: {
+    enabled: boolean;
+    fractionA: number;     // 0–1 — flow share of stream A
+    labelA: string;
+    labelB: string;
+    cB: CinComponents;     // dose set for stream B
+  };
+
   // optional measured SHC for flagging
   measuredShcA?: number;
 }
@@ -49,12 +61,67 @@ export function defaultPanelState(): PanelState {
       polymer_mgL: 0.1,
       pac_mgL: 0,
     },
+    blend: {
+      enabled: false,
+      fractionA: 0.5,
+      labelA: "Stream A (clarifier)",
+      labelB: "Stream B (softener)",
+      cB: {
+        influent_NTU: 0.5,
+        ntu_to_mgL: 1.5,
+        alum_mgL: 0,
+        pacl_mgL: 0,
+        ferric_mgL: 0,
+        lime_caco3_mgL: 60,
+        lime_mgoh2_mgL: 40,
+        polymer_mgL: 0,
+        pac_mgL: 0,
+      },
+    },
     measuredShcA: undefined,
   };
 }
 
-export function panelToInputs(s: PanelState): { inputs: ShcInputs; cinTotal: number } {
-  const { total, fractions } = computeCin(s.c);
+export function panelToInputs(s: PanelState): { inputs: ShcInputs; cinTotal: number; cinA?: number; cinB?: number } {
+  const A = computeCin(s.c);
+
+  // Compute the effective C_in and composition reaching the filter.
+  // - Single stream: A directly.
+  // - Blend mode: flow-weighted blend of A and B.
+  let total: number;
+  let fractions: SolidsFraction[];
+  let polymer_mgL: number;
+  let cinB: number | undefined;
+
+  if (s.blend.enabled) {
+    const B = computeCin(s.blend.cB);
+    cinB = B.total;
+    const fA = Math.max(0, Math.min(1, s.blend.fractionA));
+    const fB = 1 - fA;
+    total = fA * A.total + fB * B.total;
+
+    // Flow-weighted mass per solid type
+    const mass: Record<string, number> = {};
+    for (const f of A.fractions) {
+      mass[f.solid] = (mass[f.solid] ?? 0) + fA * A.total * f.fraction;
+    }
+    for (const f of B.fractions) {
+      mass[f.solid] = (mass[f.solid] ?? 0) + fB * B.total * f.fraction;
+    }
+    fractions = total > 0
+      ? Object.entries(mass)
+          .filter(([_, m]) => m > 0)
+          .map(([solid, m]) => ({ solid: solid as SolidsKey, fraction: m / total }))
+      : [];
+
+    // Polymer dose at the filter is the flow-weighted average of the two streams
+    polymer_mgL = fA * s.c.polymer_mgL + fB * s.blend.cB.polymer_mgL;
+  } else {
+    total = A.total;
+    fractions = A.fractions;
+    polymer_mgL = s.c.polymer_mgL;
+  }
+
   const totalDepth = s.layers.reduce((a, l) => a + Math.max(0, l.depth), 0);
   const inputs: ShcInputs = {
     filter: {
@@ -74,9 +141,9 @@ export function panelToInputs(s: PanelState): { inputs: ShcInputs; cinTotal: num
       temperature: s.temperature,
     },
     composition: fractions,
-    polymer_mgL: s.c.polymer_mgL, // pass polymer through for k_h conditioning
+    polymer_mgL,
   };
-  return { inputs, cinTotal: total };
+  return { inputs, cinTotal: total, cinA: A.total, cinB };
 }
 
 export function InputPanel({
@@ -101,9 +168,32 @@ export function InputPanel({
     onChange({ ...state, layers: newLayers });
   };
 
+  const setBlend = <K extends keyof PanelState["blend"]>(k: K, v: PanelState["blend"][K]) =>
+    onChange({ ...state, blend: { ...state.blend, [k]: v } });
+
+  const setCB = <K extends keyof CinComponents>(k: K, v: CinComponents[K]) =>
+    onChange({ ...state, blend: { ...state.blend, cB: { ...state.blend.cB, [k]: v } } });
+
   const totalDepth = state.layers.reduce((a, l) => a + Math.max(0, l.depth), 0);
 
-  const { total, fractions } = computeCin(state.c);
+  // Compute the C_in summary that will be used by the model.
+  const A = computeCin(state.c);
+  const B = state.blend.enabled ? computeCin(state.blend.cB) : null;
+  const fA = Math.max(0, Math.min(1, state.blend.fractionA));
+  const total = state.blend.enabled && B
+    ? fA * A.total + (1 - fA) * B.total
+    : A.total;
+  // For the displayed composition use the same flow-weighted blend as
+  // panelToInputs(), so the user sees exactly what feeds the model.
+  const fractions: SolidsFraction[] = (() => {
+    if (!state.blend.enabled || !B) return A.fractions;
+    const mass: Record<string, number> = {};
+    for (const f of A.fractions) mass[f.solid] = (mass[f.solid] ?? 0) + fA * A.total * f.fraction;
+    for (const f of B.fractions) mass[f.solid] = (mass[f.solid] ?? 0) + (1 - fA) * B.total * f.fraction;
+    return total > 0
+      ? Object.entries(mass).filter(([, m]) => m > 0).map(([solid, m]) => ({ solid: solid as SolidsKey, fraction: m / total }))
+      : [];
+  })();
 
   return (
     <Card>
@@ -208,7 +298,52 @@ export function InputPanel({
         </div>
 
         <div>
-          <SectionTitle>Influent solids C_in build-up</SectionTitle>
+          <div className="flex items-center justify-between">
+            <SectionTitle>Influent solids C_in build-up</SectionTitle>
+            <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={state.blend.enabled}
+                onChange={e => setBlend("enabled", e.target.checked)}
+                className="w-3 h-3 accent-brand"
+              />
+              Two-stream blend
+            </label>
+          </div>
+
+          {state.blend.enabled && (
+            <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] text-slate-600 mb-1">
+                    Stream A flow share: {(fA * 100).toFixed(0)} %
+                  </label>
+                  <input
+                    type="range" min="0" max="1" step="0.05"
+                    value={state.blend.fractionA}
+                    onChange={e => setBlend("fractionA", parseFloat(e.target.value))}
+                    className="w-full accent-brand"
+                  />
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Streams blend ahead of common filters. Filter sees flow-weighted average of both.
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <input type="text" value={state.blend.labelA} onChange={e => setBlend("labelA", e.target.value)}
+                  className="text-xs border border-slate-300 rounded px-2 py-1 bg-white w-full" placeholder="Stream A label" />
+                <input type="text" value={state.blend.labelB} onChange={e => setBlend("labelB", e.target.value)}
+                  className="text-xs border border-slate-300 rounded px-2 py-1 bg-white w-full" placeholder="Stream B label" />
+              </div>
+            </div>
+          )}
+
+          {/* Stream A (always shown) */}
+          {state.blend.enabled && (
+            <div className="text-[11px] font-medium text-blue-800 mb-1.5">
+              {state.blend.labelA} ({(fA * 100).toFixed(0)} %)
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <NumField label="Filter influent turbidity" unit="NTU" step={0.1} min={0} max={500}
               value={state.c.influent_NTU} onChange={v => setC("influent_NTU", v)} />
@@ -226,7 +361,7 @@ export function InputPanel({
               hint="Ca-hardness fraction" />
             <NumField label="Lime → Mg(OH)₂ path" unit="mg/L lime" step={1} min={0} max={500}
               value={state.c.lime_mgoh2_mgL} onChange={v => setC("lime_mgoh2_mgL", v)}
-              hint="Mg-hardness fraction" />
+              hint="Mg path also yields CaCO₃" />
             <NumField label="Polymer / coagulant aid" unit="mg/L" step={0.05} min={0} max={5}
               value={state.c.polymer_mgL} onChange={v => setC("polymer_mgL", v)}
               hint="Filter aid 0.01–0.1 · coag aid 0.05–0.25 · direct 0.2–2.0" />
@@ -234,9 +369,49 @@ export function InputPanel({
               value={state.c.pac_mgL} onChange={v => setC("pac_mgL", v)} />
           </div>
 
+          {state.blend.enabled && (
+            <div className="text-[11px] text-slate-600 bg-white border border-slate-200 rounded px-2 py-1 mt-2 tabular-nums">
+              Stream A C_in: {A.total.toFixed(2)} mg/L (before blending)
+            </div>
+          )}
+
+          {/* Stream B (blend mode only) */}
+          {state.blend.enabled && (
+            <div className="mt-4 pt-3 border-t border-slate-200">
+              <div className="text-[11px] font-medium text-blue-800 mb-1.5">
+                {state.blend.labelB} ({((1 - fA) * 100).toFixed(0)} %)
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <NumField label="Filter influent turbidity" unit="NTU" step={0.1} min={0} max={500}
+                  value={state.blend.cB.influent_NTU} onChange={v => setCB("influent_NTU", v)} />
+                <NumField label="Turbidity → TSS" unit="mg/L per NTU" step={0.1} min={0.1} max={5}
+                  value={state.blend.cB.ntu_to_mgL} onChange={v => setCB("ntu_to_mgL", v)} />
+                <NumField label="Alum (14·H₂O) dose" unit="mg/L" step={1} min={0} max={500}
+                  value={state.blend.cB.alum_mgL} onChange={v => setCB("alum_mgL", v)} />
+                <NumField label="PACl dose" unit="mg/L" step={1} min={0} max={500}
+                  value={state.blend.cB.pacl_mgL} onChange={v => setCB("pacl_mgL", v)} />
+                <NumField label="Ferric chloride dose" unit="mg/L" step={1} min={0} max={500}
+                  value={state.blend.cB.ferric_mgL} onChange={v => setCB("ferric_mgL", v)} />
+                <NumField label="Lime → CaCO₃ path" unit="mg/L lime" step={1} min={0} max={500}
+                  value={state.blend.cB.lime_caco3_mgL} onChange={v => setCB("lime_caco3_mgL", v)} />
+                <NumField label="Lime → Mg(OH)₂ path" unit="mg/L lime" step={1} min={0} max={500}
+                  value={state.blend.cB.lime_mgoh2_mgL} onChange={v => setCB("lime_mgoh2_mgL", v)} />
+                <NumField label="Polymer / coagulant aid" unit="mg/L" step={0.05} min={0} max={5}
+                  value={state.blend.cB.polymer_mgL} onChange={v => setCB("polymer_mgL", v)} />
+                <NumField label="Powdered AC" unit="mg/L" step={1} min={0} max={500}
+                  value={state.blend.cB.pac_mgL} onChange={v => setCB("pac_mgL", v)} />
+              </div>
+              {B && (
+                <div className="text-[11px] text-slate-600 bg-white border border-slate-200 rounded px-2 py-1 mt-2 tabular-nums">
+                  Stream B C_in: {B.total.toFixed(2)} mg/L (before blending)
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-3 text-xs bg-slate-50 border border-slate-200 rounded px-3 py-2">
             <div className="font-medium text-slate-700">
-              Computed C_in = <span className="tabular-nums">{total.toFixed(2)} mg/L</span>
+              {state.blend.enabled ? "Blended " : ""}C_in at filter inlet = <span className="tabular-nums">{total.toFixed(2)} mg/L</span>
             </div>
             <div className="text-slate-500 mt-1">
               Composition: {fractions.length === 0 ? "—" :
