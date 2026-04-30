@@ -13,7 +13,12 @@ function bindingLabel(b: ShcResult["binding"]) {
   return b === "head_loss" ? "Head loss" : b === "breakthrough" ? "Breakthrough" : "Time (t_max)";
 }
 
-export function ResultPanel({ result, title = "Model output" }: { result: ShcResult; title?: string }) {
+export function ResultPanel({ result, title = "Model output", filterArea_m2, velocity_mh }: {
+  result: ShcResult;
+  title?: string;
+  filterArea_m2?: number;
+  velocity_mh?: number;
+}) {
   const flagInfo = result.flag ? FLAG_LABELS[result.flag] : null;
 
   const flagIcon = result.flag?.startsWith("alarm") ? <ShieldAlert className="w-4 h-4" />
@@ -32,12 +37,12 @@ export function ResultPanel({ result, title = "Model output" }: { result: ShcRes
       <CardBody className="space-y-4">
 
         <div className="grid grid-cols-2 gap-3">
-          <Stat label="SHC (areal)" value={fmt(result.SHC_a, 2)} unit="kg/m²·run"
+          <Stat label="SHC areal (per m² filter)" value={fmt(result.SHC_a, 2)} unit="kg/m²·run"
             sub={`Ceiling ≈ ${fmt(result.SHC_a_ceiling, 1)} kg/m²`} />
-          <Stat label="SHC (volumetric)" value={fmt(result.SHC_v, 2)} unit="kg/m³·run"
+          <Stat label="SHC volumetric (per m³ bed)" value={fmt(result.SHC_v, 2)} unit="kg/m³·run"
             sub={`Ceiling ≈ ${fmt(result.SHC_v_ceiling, 1)} kg/m³`} />
           <Stat label="Run length t_run" value={fmt(result.t_run, 1)} unit="h" />
-          <Stat label="UFRV" value={fmt(result.UFRV, 0)} unit="m³/m²" />
+          <Stat label="UFRV (per m² filter)" value={fmt(result.UFRV, 0)} unit="m³/m²" />
         </div>
 
         <div className="grid grid-cols-3 gap-2 text-xs">
@@ -70,6 +75,55 @@ export function ResultPanel({ result, title = "Model output" }: { result: ShcRes
             </div>
             <div className="text-[11px] text-cyan-800 mt-1">
               SHC_a is dry-mass; the deposit on the filter is hydrated gel ({fmt(result.wetDepositVolume_Lm2 / Math.max(result.SHC_a, 1e-6), 1)}× the dry volume). Sweep flocs carry more bound water than CN deposits.
+            </div>
+          </div>
+        )}
+
+        {filterArea_m2 && filterArea_m2 > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-amber-800 font-medium mb-1.5">
+              Plant totals at {fmt(filterArea_m2, 0)} m² filter area
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <div className="flex justify-between border-b border-amber-100 py-0.5">
+                <span className="text-amber-800">Flow rate</span>
+                <span className="font-semibold tabular-nums text-amber-900">
+                  {fmt((velocity_mh ?? 0) * filterArea_m2, 0)} m³/h
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-amber-100 py-0.5">
+                <span className="text-amber-800">Flow rate</span>
+                <span className="font-semibold tabular-nums text-amber-900">
+                  {fmt(((velocity_mh ?? 0) * filterArea_m2 * 24) / 1000, 2)} ML/d
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-amber-100 py-0.5">
+                <span className="text-amber-800">Volume per run</span>
+                <span className="font-semibold tabular-nums text-amber-900">
+                  {fmt(result.UFRV * filterArea_m2, 0)} m³
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-amber-100 py-0.5">
+                <span className="text-amber-800">Mass captured per run</span>
+                <span className="font-semibold tabular-nums text-amber-900">
+                  {fmt(result.SHC_a * filterArea_m2, 1)} kg
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-amber-100 py-0.5">
+                <span className="text-amber-800">Wet-gel per run</span>
+                <span className="font-semibold tabular-nums text-amber-900">
+                  {fmt((result.wetDepositVolume_Lm2 * filterArea_m2) / 1000, 2)} m³
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-amber-100 py-0.5">
+                <span className="text-amber-800">Backwash water (≈6% UFRV·a)</span>
+                <span className="font-semibold tabular-nums text-amber-900">
+                  {fmt(0.06 * result.UFRV * filterArea_m2, 0)} m³
+                </span>
+              </div>
+            </div>
+            <div className="text-[10px] text-amber-700 mt-1.5 leading-tight">
+              Display-only conversion from per-m² model results. Backwash estimate at ~6% of UFRV is a screening figure; actual depends on cycle design.
             </div>
           </div>
         )}

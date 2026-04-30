@@ -192,14 +192,16 @@ export function CompareTab() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="space-y-4">
           <ScenarioLabel value={labelA} onChange={setLabelA} colour="bg-brand" />
-          <ResultPanel result={resA} title={`${labelA} — output`} />
+          <ResultPanel result={resA} title={`${labelA} — output`}
+            filterArea_m2={scenarioA.filterArea_m2} velocity_mh={scenarioA.velocity} />
           <HeadLossPanel result={resA} title={`${labelA} — head loss`} />
           <InputPanel state={scenarioA} onChange={setA} title={`${labelA} — inputs`} />
           <SensitivityPanel state={scenarioA} label={labelA} />
         </div>
         <div className="space-y-4">
           <ScenarioLabel value={labelB} onChange={setLabelB} colour="bg-brand-light" />
-          <ResultPanel result={resB} title={`${labelB} — output`} />
+          <ResultPanel result={resB} title={`${labelB} — output`}
+            filterArea_m2={scenarioB.filterArea_m2} velocity_mh={scenarioB.velocity} />
           <HeadLossPanel result={resB} title={`${labelB} — head loss`} />
           <InputPanel state={scenarioB} onChange={setB} title={`${labelB} — inputs`} />
           <SensitivityPanel state={scenarioB} label={labelB} />

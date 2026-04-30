@@ -401,6 +401,7 @@ export interface CleanBedHeadLossResult {
   temperature_C: number;
   viscosity_Pas: number;
   density_kgm3: number;
+  warnings: string[];   // per-layer issues (zero d_e, etc.)
 }
 
 // Compute clean-bed head loss using Carman–Kozeny per layer.
@@ -420,12 +421,27 @@ export function computeCleanBedHeadLoss(
 
   let total_h0 = 0;
   let ergun_warning = false;
+  const warnings: string[] = [];
 
   const perLayer: CleanBedHeadLossPerLayer[] = layers.map(l => {
     const eps = Math.max(0.05, Math.min(0.7, l.porosity));
-    const d_e_m = Math.max(1e-5, l.d_e / 1000);
     const psi = Math.max(0.3, Math.min(1.0, l.sphericity));
     const L = Math.max(0, l.depth);
+
+    // Guard: d_e ≤ 0 is unphysical. Skip the layer with a warning rather than
+    // letting the Carman–Kozeny denominator blow up. A clamp like
+    // Math.max(1e-5, ...) silently produces 1000+ m of head loss, which is
+    // worse than reporting zero with a warning.
+    if (l.d_e <= 0 || !isFinite(l.d_e)) {
+      warnings.push(`Layer "${l.label}" has zero or invalid effective grain size d_e — head loss for this layer cannot be computed and is reported as 0. Enter a positive d_e (mm) to include it.`);
+      return { layer: l, h0_layer: 0, reynolds: 0 };
+    }
+    if (L <= 0) {
+      // Zero-depth layer — silently skip (already represented by depth=0)
+      return { layer: l, h0_layer: 0, reynolds: 0 };
+    }
+
+    const d_e_m = l.d_e / 1000;
 
     // Carman–Kozeny head loss (m of water column):
     //   h0 = k_CK * ((1-ε)² / ε³) * (μ * v) / (ρ * g * (ψ * d_e)²) * L
@@ -450,6 +466,7 @@ export function computeCleanBedHeadLoss(
     temperature_C: T_C,
     viscosity_Pas: mu,
     density_kgm3: rho,
+    warnings,
   };
 }
 
@@ -760,7 +777,12 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
   // UFRV at terminal h = dh / (k_h_eff * dC)
   // t_h = UFRV / v
   let t_h: number;
-  if (dC <= 0 || k_h_eff <= 0 || v <= 0 || dh <= 0) {
+  if (totalDepth <= 0) {
+    // No media — no filter. Run length is zero regardless of head budget or
+    // deposit properties. Earlier the t_h calc would still produce a number
+    // because it didn't depend on depth, which was misleading.
+    t_h = 0;
+  } else if (dC <= 0 || k_h_eff <= 0 || v <= 0 || dh <= 0) {
     t_h = dh <= 0 ? 0 : Infinity;
   } else {
     t_h = (dh / (k_h_eff * dC)) / v;
@@ -845,6 +867,8 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
     if (headLoss.ergun_warning) {
       warnings.push("Particle Reynolds number > 10 in at least one layer — Carman–Kozeny is being extrapolated outside its strict validity range. Consider Ergun-equation refinement or check velocity.");
     }
+    // Surface per-layer issues (e.g. zero d_e) into the user-visible warnings.
+    for (const w of headLoss.warnings) warnings.push(w);
   }
 
   // Head loss development curve — generated whenever we have a meaningful

@@ -35,6 +35,12 @@ export interface PanelState {
     cB: CinComponents;     // dose set for stream B
   };
 
+  // Optional filter area (m²) — display-only, does not affect any model
+  // calculation. When set, "Plant totals" are derived from the per-area
+  // results: total flow, mass captured per run, wet-gel volume per run,
+  // approximate backwash water. Leave blank to keep all output specific.
+  filterArea_m2?: number;
+
   // optional measured SHC for flagging
   measuredShcA?: number;
 }
@@ -309,6 +315,21 @@ export function InputPanel({
             <NumField label="Water temperature" unit="°C" step={1} min={0} max={40}
               value={state.temperature} onChange={v => set("temperature", v)}
               hint="Cold water → higher k_h" />
+          </div>
+
+          <div className="mt-3 bg-amber-50 border border-amber-200 rounded p-2">
+            <div className="text-[11px] font-medium text-amber-900 mb-1">
+              Optional: filter area for plant totals
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
+              <NumField label="Filter area (per cell)" unit="m²" step={1} min={0} max={500}
+                value={state.filterArea_m2 ?? 0}
+                onChange={v => set("filterArea_m2", v > 0 ? v : undefined)}
+                hint="Leave 0 to keep results per m² only" />
+              <div className="text-[11px] text-amber-800 leading-tight">
+                The model is per m² of filter area (SHC kg/m², UFRV m³/m²). Enter an area to also display plant-total flow, mass captured per run, and backwash water.
+              </div>
+            </div>
           </div>
         </div>
 
