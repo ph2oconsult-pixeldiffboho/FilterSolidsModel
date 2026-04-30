@@ -10,7 +10,7 @@ function fmt(n: number, dp = 2) {
 }
 
 function bindingLabel(b: ShcResult["binding"]) {
-  return b === "head_loss" ? "Head loss" : b === "breakthrough" ? "Breakthrough" : "Time (t_max)";
+  return b === "head_loss" ? "Head loss" : "Breakthrough";
 }
 
 export function ResultPanel({ result, title = "Model output", filterArea_m2, velocity_mh }: {
@@ -30,41 +30,106 @@ export function ResultPanel({ result, title = "Model output", filterArea_m2, vel
     <Card>
       <CardHeader className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-slate-800">{title}</h2>
-        <span className="text-xs px-2 py-0.5 rounded-full bg-brand text-white">
-          Binding: {bindingLabel(result.binding)}
-        </span>
+        {result.breakthrough_before_terminal ? (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-red-600 text-white font-medium">
+            ⚠ Breakthrough before h_T
+          </span>
+        ) : (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-brand text-white">
+            Terminates at h_T
+          </span>
+        )}
       </CardHeader>
       <CardBody className="space-y-4">
 
         <div className="grid grid-cols-2 gap-3">
-          <Stat label="SHC areal (per m² filter)" value={fmt(result.SHC_a, 2)} unit="kg/m²·run"
-            sub={`Ceiling ≈ ${fmt(result.SHC_a_ceiling, 1)} kg/m²`} />
-          <Stat label="SHC volumetric (per m³ bed)" value={fmt(result.SHC_v, 2)} unit="kg/m³·run"
-            sub={`Ceiling ≈ ${fmt(result.SHC_v_ceiling, 1)} kg/m³`} />
           <Stat label="Run length t_run" value={fmt(result.t_run, 1)} unit="h" />
           <Stat label="UFRV (per m² filter)" value={fmt(result.UFRV, 0)} unit="m³/m²" />
         </div>
 
+        <div className="bg-slate-50 border border-slate-200 rounded p-2.5">
+          <div className="text-[11px] uppercase tracking-wide text-slate-600 font-medium mb-1.5">
+            Solids holding capacity per run
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-[11px] text-slate-500">SHC areal (per m² filter)</div>
+              <div className="text-lg font-semibold tabular-nums text-slate-900">
+                {fmt(result.SHC_a, 2)} <span className="text-xs font-normal text-slate-500">kg/m²·run</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">
+                Ceiling ≈ {fmt(result.SHC_a_ceiling, 1)} kg/m²
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-500">SHC volumetric (per m³ bed)</div>
+              <div className="text-lg font-semibold tabular-nums text-slate-900">
+                {fmt(result.SHC_v, 2)} <span className="text-xs font-normal text-slate-500">kg/m³·run</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">
+                Ceiling ≈ {fmt(result.SHC_v_ceiling, 1)} kg/m³
+              </div>
+            </div>
+          </div>
+          <div className="text-[10px] text-slate-500 mt-1.5 pt-1.5 border-t border-slate-200">
+            SHC_v = SHC_a / total bed depth. The two values look similar at ~1 m bed depth but diverge for shallow or deep beds — for a 1.3 m bed, SHC_v is ~23% lower than SHC_a; for a 0.5 m bed, ~2× higher.
+          </div>
+        </div>
+
         <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="bg-slate-50 rounded border border-slate-200 px-2 py-1.5">
-            <div className="text-slate-500">t_h (head loss)</div>
-            <div className="font-semibold tabular-nums">{fmt(result.t_h, 1)} h</div>
+          <div className="rounded border px-2 py-1.5 bg-amber-50 border-amber-300">
+            <div className="text-slate-500">t_h (terminal head loss)</div>
+            <div className="font-semibold tabular-nums">{fmt(result.t_h, 1)} h ←</div>
+          </div>
+          <div className={`rounded border px-2 py-1.5 ${result.breakthrough_before_terminal ? "bg-red-50 border-red-400" : "bg-slate-50 border-slate-200"}`}>
+            <div className={result.breakthrough_before_terminal ? "text-red-700" : "text-slate-500"}>
+              t_b (breakthrough)
+            </div>
+            <div className={`font-semibold tabular-nums ${result.breakthrough_before_terminal ? "text-red-900" : ""}`}>
+              {fmt(result.t_b, 1)} h{result.breakthrough_before_terminal ? " ⚠" : ""}
+            </div>
           </div>
           <div className="bg-slate-50 rounded border border-slate-200 px-2 py-1.5">
-            <div className="text-slate-500">t_b (breakthrough)</div>
-            <div className="font-semibold tabular-nums">{fmt(result.t_b, 1)} h</div>
-          </div>
-          <div className="bg-slate-50 rounded border border-slate-200 px-2 py-1.5">
-            <div className="text-slate-500">t_max</div>
+            <div className="text-slate-500">t_max (setpoint)</div>
             <div className="font-semibold tabular-nums">{fmt(result.t_max, 0)} h</div>
           </div>
         </div>
+
+        {result.breakthrough_before_terminal && result.SHC_a > 0.01 && (
+          <div className="bg-red-50 border border-red-300 rounded px-3 py-2 text-[11px]">
+            <div className="font-semibold text-red-900 mb-0.5">
+              ⚠ Quality failure: breakthrough before terminal head loss
+            </div>
+            <div className="text-red-800 leading-tight">
+              Filter quality breaks down at t_b = <span className="font-semibold tabular-nums">{fmt(result.t_b, 1)} h</span> —
+              before terminal head loss is reached at t_h = {fmt(result.t_h, 1)} h.
+              Operator must backwash at breakthrough, so achievable capacity is
+              SHC_a = <span className="font-semibold tabular-nums">{fmt(result.SHC_a_at_breakthrough, 2)} kg/m²</span>
+              {" "}rather than the {fmt(result.SHC_a, 2)} kg/m² the head budget would allow.
+              {" "}Possible mitigations: deeper bed, finer media, lower velocity, change coagulant or regime to improve floc capture.
+            </div>
+          </div>
+        )}
+
+        {result.setpoint_truncates_run && result.SHC_a > 0.01 && !result.breakthrough_before_terminal && (
+          <div className="bg-orange-50 border border-orange-200 rounded px-3 py-2 text-[11px]">
+            <div className="font-semibold text-orange-900 mb-0.5">
+              Operator setpoint truncates the run
+            </div>
+            <div className="text-orange-800 leading-tight">
+              Filter run terminates at t_h = {fmt(result.t_run, 1)} h capturing {fmt(result.SHC_a, 2)} kg/m².
+              At t_max = {fmt(result.t_max, 0)} h, the operator would see only
+              SHC_a = <span className="font-semibold tabular-nums">{fmt(result.SHC_a_at_setpoint, 2)} kg/m²</span>
+              {" "}(UFRV {fmt(result.UFRV_at_setpoint, 0)} m³/m²).
+            </div>
+          </div>
+        )}
 
         {result.SHC_a > 0.01 && (
           <div className="bg-cyan-50 border border-cyan-200 rounded px-3 py-2">
             <div className="flex items-baseline justify-between gap-3">
               <div>
-                <span className="text-[11px] uppercase tracking-wide text-cyan-700 font-medium">Wet-gel deposit</span>
+                <span className="text-[11px] uppercase tracking-wide text-cyan-700 font-medium">Wet-floc deposit on filter</span>
                 <span className="ml-2 text-sm font-semibold tabular-nums text-cyan-900">
                   {fmt(result.wetDepositVolume_Lm2, 1)} L/m²
                 </span>
@@ -73,8 +138,13 @@ export function ResultPanel({ result, title = "Model output", filterArea_m2, vel
                 {(result.wetDepositVolume_pctVoids * 100).toFixed(1)}% of bed voids
               </span>
             </div>
-            <div className="text-[11px] text-cyan-800 mt-1">
-              SHC_a is dry-mass; the deposit on the filter is hydrated gel ({fmt(result.wetDepositVolume_Lm2 / Math.max(result.SHC_a, 1e-6), 1)}× the dry volume). Sweep flocs carry more bound water than CN deposits.
+            <div className="text-[11px] text-cyan-800 mt-1 leading-tight">
+              {fmt(result.SHC_a, 2)} kg/m² of dry hydroxide expands to {fmt(result.wetDepositVolume_Lm2, 1)} L/m² on the filter
+              — a hydration ratio of {fmt(result.wetDepositVolume_Lm2 / Math.max(result.SHC_a, 1e-6), 1)}× the dry volume.
+              Bound water in the floc gel is captured in ρ_d_eff = {fmt(result.rho_d_eff, 0)} kg/m³,
+              not in the dry-mass yield. The terminal wet-floc volume is roughly regime-independent
+              (head loss is what fills the bed); CN deposits pack more dry mass into the same wet volume
+              than sweep gel, which is why CN gives higher dry-mass SHC at equivalent dose.
             </div>
           </div>
         )}

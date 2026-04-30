@@ -84,9 +84,12 @@ export function CompareTab() {
     { metric: "SHC_a (kg/m²)", A: safe(resA.SHC_a), B: safe(resB.SHC_a) },
     { metric: "SHC_v (kg/m³)", A: safe(resA.SHC_v), B: safe(resB.SHC_v) },
   ];
+  // Run length and UFRV are very different in magnitude (hours vs m³/m²) so
+  // we plot them as one comparison row with a secondary y-axis instead of
+  // forcing them onto a shared axis where run length would visually vanish.
   const runData = [
-    { metric: "Run length (h)", A: safe(resA.t_run), B: safe(resB.t_run) },
-    { metric: "UFRV (m³/m²)", A: safe(resA.UFRV), B: safe(resB.UFRV) },
+    { scenario: labelA, t_run: safe(resA.t_run), UFRV: safe(resA.UFRV) },
+    { scenario: labelB, t_run: safe(resB.t_run), UFRV: safe(resB.UFRV) },
   ];
 
   const presetCfg = presetId ? PRESET_PAIRS.find(p => p.id === presetId) : null;
@@ -172,13 +175,17 @@ export function CompareTab() {
               <div className="text-xs font-medium text-slate-600 mb-1">Run length and throughput</div>
               <div className="h-60">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={runData} margin={{ top: 10, right: 10, bottom: 30, left: 0 }}>
+                  <BarChart data={runData} margin={{ top: 10, right: 50, bottom: 30, left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="metric" tick={{ fontSize: 11 }} interval={0} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip formatter={(v: number) => v.toFixed(1)} />
-                    <Bar dataKey="A" name={labelA} fill="#1f4e79" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="B" name={labelB} fill="#2e74b5" radius={[3, 3, 0, 0]} />
+                    <XAxis dataKey="scenario" tick={{ fontSize: 11 }} interval={0} />
+                    <YAxis yAxisId="L" tick={{ fontSize: 11 }}
+                           label={{ value: "Run length (h)", angle: -90, position: "insideLeft", offset: 10, style: { fontSize: 10, fill: "#1f4e79" } }} />
+                    <YAxis yAxisId="R" orientation="right" tick={{ fontSize: 11 }}
+                           label={{ value: "UFRV (m³/m²)", angle: 90, position: "insideRight", offset: 10, style: { fontSize: 10, fill: "#0e7c66" } }} />
+                    <Tooltip formatter={(v: number, name: string) =>
+                      name === "UFRV" ? [v.toFixed(0) + " m³/m²", name] : [v.toFixed(1) + " h", "Run length"]} />
+                    <Bar yAxisId="L" dataKey="t_run" name="Run length" fill="#1f4e79" radius={[3, 3, 0, 0]} />
+                    <Bar yAxisId="R" dataKey="UFRV"  name="UFRV"       fill="#0e7c66" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

@@ -116,7 +116,14 @@ export function HeadLossPanel({ result, title = "Head loss" }: { result: ShcResu
                                  label={{ value: `Terminal h_T = ${dev.h_T_target.toFixed(2)} m`, fontSize: 10, fill: "#dc2626", position: "insideTopLeft" }} />
                   <ReferenceLine yAxisId="L" y={dev.h0} stroke="#94a3b8" strokeDasharray="3 3"
                                  label={{ value: `h₀ = ${dev.h0.toFixed(2)} m`, fontSize: 10, fill: "#64748b", position: "insideBottomLeft" }} />
-                  <Line yAxisId="L" type="monotone" dataKey="total" name="Total head loss"
+                  {result.t_max > 0 && (
+                    <ReferenceLine yAxisId="L" x={result.t_max} stroke="#f97316" strokeDasharray="3 3"
+                                   label={{ value: `t_max = ${result.t_max} h`, fontSize: 10, fill: "#c2410c", position: "top" }} />
+                  )}
+                  {Number.isFinite(result.t_run) && (
+                    <ReferenceLine yAxisId="L" x={result.t_run} stroke="#1f4e79" strokeDasharray="0"
+                                   label={{ value: `t_run = ${result.t_run.toFixed(1)} h`, fontSize: 10, fill: "#1f4e79", position: "insideTop" }} />
+                  )}<Line yAxisId="L" type="monotone" dataKey="total" name="Total head loss"
                         stroke="#1f4e79" strokeWidth={2} dot={false} />
                   <Line yAxisId="R" type="monotone" dataKey="ufrv" name="UFRV"
                         stroke="#0e7c66" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />

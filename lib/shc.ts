@@ -52,32 +52,34 @@ export const SOLIDS: Record<SolidsKey, SolidsProperties> = {
   alum: {
     key: "alum",
     label: "Aluminium hydroxide (alum floc, sweep)",
+    // Dry-mass yield is stoichiometric: 78/(594/2) = 0.264 mg Al(OH)₃ per mg
+    // alum-14, or 2.89 mg per mg Al³⁺. The hydration state of the gel
+    // (Al(OH)₃·xH₂O with x ≈ 15–20 typical) is captured in ρ_d, NOT in yield_c:
+    //   ρ_d = 55 kg/m³ means 1 kg of dry mass occupies ~18 L of wet-gel volume
+    //   on the filter. ~98% of that volume is bound water. This is what makes
+    //   sweep flocs voluminous and compressible.
     rho_d: 55,
     sigma_b: 11,
     k_h: 0.0022,
-    yield_c: 0.26, // alum 14·H2O, full stoichiometric
-    composition: "Al(OH)₃·xH₂O",
-    notes: "Gelatinous, highly compressible. Worst-case for filter run length per unit mass. Sweep regime — typical pH 6.5–8, dose 10–60 mg/L.",
+    yield_c: 0.26,
+    composition: "Al(OH)₃·xH₂O (gel hydrate, x ≈ 15–20)",
+    notes: "Voluminous hydrate gel — most of the deposit volume is bound water trapped between hydroxide scaffolds. Highly compressible. Sweep regime — typical pH 6.5–8, dose 10–60 mg/L. Yield is dry-mass; the morphology parameter ρ_d carries the hydration.",
   },
   alum_cn: {
     key: "alum_cn",
     label: "Alum CN deposit (charge neutralisation)",
-    // Parameter calibration (red-team v8): values softened from initial estimates
-    // to match literature midpoints rather than upper bounds.
-    //   ρ_d: +35% vs sweep (Bache & Gregory; fractal-dimension studies show
-    //        CN flocs are 20–50% denser; midpoint ≈ +35%)
-    //   σ_b: +9% vs sweep (denser deposits hold marginally more per unit voids
-    //        but smaller voids overall; net effect modest)
-    //   k_h: -32% vs sweep (Liu 2017; cake resistance studies show CN/sweep
-    //        ratios in 0.5–0.8× range; midpoint ≈ 0.68×)
-    //   yield_c: 0.05 (Pernitsky 2001 — at low CN-favouring doses, much of
-    //        the dosed Al stays soluble; overstated at higher doses)
+    // Same dry-mass yield as sweep — chemistry doesn't change with regime.
+    // Hydration is LESS than sweep because CN deposits are compact aggregates
+    // of destabilised colloids with thin Al(OH)₃ surface coating, not bulk gel:
+    //   ρ_d = 75 kg/m³ → 1 kg dry occupies ~13 L wet (vs 18 L for sweep gel)
+    // The CN-vs-sweep difference is morphology (denser, less hydrated, less
+    // compressible), not mass.
     rho_d: 75,
     sigma_b: 12,
     k_h: 0.0015,
-    yield_c: 0.05,
-    composition: "Destabilised colloid + thin Al(OH)₃ surface layer",
-    notes: "Charge-neutralisation regime — typical pH 5–6, dose 1–8 mg/L alum. Defined by floc morphology (small dense aggregates), not dose alone. At high dose (>15 mg/L) regime tips to sweep regardless of pH due to solubility.",
+    yield_c: 0.264,
+    composition: "Al(OH)₃ on colloid surfaces (less hydrated than sweep gel)",
+    notes: "Charge-neutralisation regime — small dense aggregates with Al(OH)₃ surface coating; less voluminous and less compressible than sweep gel. Typical pH 5–6, dose 1–8 mg/L alum, but defined by floc morphology not dose.",
   },
   pacl: {
     key: "pacl",
@@ -92,39 +94,42 @@ export const SOLIDS: Record<SolidsKey, SolidsProperties> = {
   pacl_cn: {
     key: "pacl_cn",
     label: "PACl CN deposit",
-    // PACl pre-polymerised species are effective in CN at lower doses than
-    // alum; deposit is denser than alum-CN. Limited direct literature data —
-    // softened estimate, treat with caution.
+    // Same stoichiometric logic as alum_cn — pre-polymerised PACl precipitates
+    // virtually completely at CN pH. Difference vs sweep PACl is morphology.
     rho_d: 110,
     sigma_b: 16,
     k_h: 0.0012,
-    yield_c: 0.06,
-    composition: "Destabilised colloid + PACl surface coating",
-    notes: "PACl in charge-neutralisation regime — pre-polymerised cationic species effective at lower doses than alum. Limited published parameter data; values are estimates.",
+    yield_c: 0.22,
+    composition: "Al(OH)₃ (polymerised) on colloid surfaces",
+    notes: "PACl in charge-neutralisation regime — pre-polymerised cationic species effective at lower doses than alum. Mass yield matches sweep PACl (stoichiometric); difference is morphology.",
   },
   ferric: {
     key: "ferric",
     label: "Ferric hydroxide (ferric floc, sweep)",
+    // Dry-mass yield: 1 mg FeCl₃ → 0.66 mg Fe(OH)₃ (107/162 stoichiometric).
+    // 1 mg Fe → 1.92 mg Fe(OH)₃ (107/55.85).
+    // Fe(OH)₃ gel is less voluminous than Al(OH)₃ — fewer waters of hydration,
+    // tougher structure. ρ_d = 95 kg/m³ → 1 kg dry occupies ~10 L wet (vs ~18 L
+    // for alum sweep). This is why ferric deposits are easier to backwash.
     rho_d: 95,
     sigma_b: 17,
     k_h: 0.0014,
-    yield_c: 0.66, // FeCl3 anhydrous, full stoichiometric
-    composition: "Fe(OH)₃·xH₂O",
-    notes: "Tougher, denser, less compressible than Al floc. Holds shape better. Sweep regime — typical pH 5.5–8.5.",
+    yield_c: 0.66,
+    composition: "Fe(OH)₃·xH₂O (less hydrated than alum gel)",
+    notes: "Tougher, denser, less compressible than alum floc. Holds shape better. Sweep regime — typical pH 5.5–8.5. Lower bound water content than alum gel encoded in higher ρ_d.",
   },
   ferric_cn: {
     key: "ferric_cn",
     label: "Ferric CN deposit",
-    // Fe(OH)3 solubility is far lower than Al(OH)3 — at any pH above ~3, most
-    // dosed Fe precipitates. CN for ferric means low-dose with charge-driven
-    // mechanism, but yield is HIGHER than for alum-CN because precipitation
-    // happens regardless. Properties shift less dramatically.
+    // Fe(OH)₃ solubility is far lower than Al(OH)₃ — at any pH above ~3,
+    // virtually all dosed Fe precipitates. yield_c = sweep value.
+    // CN morphology: even denser/less hydrated than sweep ferric.
     rho_d: 125,
     sigma_b: 18,
     k_h: 0.0010,
-    yield_c: 0.30,
-    composition: "Destabilised colloid + Fe(OH)₃ (mostly precipitated)",
-    notes: "Ferric in charge-neutralisation regime — typical pH 4–6.5; less common than sweep. Higher yield than Al-CN because Fe(OH)₃ precipitates at most pH values.",
+    yield_c: 0.66,
+    composition: "Fe(OH)₃ on colloid surfaces (compact, low hydration)",
+    notes: "Ferric in charge-neutralisation regime — typical pH 4–6.5; mass yield stoichiometric (= sweep). Difference vs sweep is morphology — even less hydrated than sweep ferric.",
   },
   caco3: {
     key: "caco3",
@@ -519,12 +524,16 @@ export function computeHeadLossDevelopment(
   const ufrv_at_terminal = rate_per_ufrv > 0 ? h_T_minus_h0 / rate_per_ufrv : Infinity;
   const t_terminal = v_mh > 0 ? ufrv_at_terminal / v_mh : Infinity;
 
-  // Sample the curve from t = 0 to t = min(t_max, t_terminal * 1.2) so the
-  // user can see the curve a bit past the terminal point if it falls before t_max
-  const t_end_sample = Math.min(
-    Math.max(t_max_h, 1),
-    Number.isFinite(t_terminal) ? t_terminal * 1.2 : t_max_h
-  );
+  // Sample the curve so the operator can see:
+  //   - the natural terminal point (where head loss budget is exhausted)
+  //   - the operator setpoint t_max (rendered as a vertical reference)
+  // We extend the x-axis to min(t_terminal × 1.2, 200 h cap) so the curve
+  // always completes visually even when t_max is short. If t_max is the
+  // operationally relevant horizon, the chart still shows it via the
+  // reference line in the panel.
+  const t_end_sample = Number.isFinite(t_terminal)
+    ? Math.min(Math.max(t_terminal * 1.2, t_max_h, 1), 200)
+    : Math.max(t_max_h, 1);
 
   const curve: HeadLossDevelopmentPoint[] = [];
   for (let i = 0; i <= nPoints; i++) {
@@ -581,7 +590,7 @@ export interface ShcInputs {
   polymer_mgL?: number;
 }
 
-export type BindingConstraint = "head_loss" | "breakthrough" | "time";
+export type BindingConstraint = "head_loss" | "breakthrough";
 export type FlagTier =
   | "normal"
   | "watch_low"
@@ -599,13 +608,27 @@ export interface ShcResult {
   // run length predictions
   t_h: number;
   t_b: number;
-  t_max: number;
-  t_run: number;
-  binding: BindingConstraint;
-  // capacities
+  t_max: number;        // operator setpoint (informational only — does not bind SHC)
+  t_run: number;        // filter run termination = t_h (terminal head loss); capped at 999 h for UI
+  t_run_capped: boolean; // true if t_h exceeded the display cap
+  binding: BindingConstraint;  // always 'head_loss' — kept for API compatibility
+  // Breakthrough-before-terminal-head-loss: red flag for design failure.
+  // If true, filter quality breaks down before head loss would terminate the
+  // run. Operator sees turbidity rise before reaching terminal h_T.
+  breakthrough_before_terminal: boolean;
+  // Operator setpoint annotation: true if t_max would truncate the natural run
+  setpoint_truncates_run: boolean;
+  t_run_at_setpoint: number;   // = min(t_run, t_max)
+  // capacities (filter's design terminal — head loss reaches h_T)
   UFRV: number;       // m3/m2
   SHC_a: number;      // kg/m2/run
   SHC_v: number;      // kg/m3/run
+  // capacities at operator setpoint — what the plant would actually see if t_max binds
+  UFRV_at_setpoint: number;
+  SHC_a_at_setpoint: number;
+  // Capacity at breakthrough — operationally achievable when breakthrough fires
+  // before terminal head loss (= SHC_a otherwise).
+  SHC_a_at_breakthrough: number;
   // theoretical ceilings
   SHC_v_ceiling: number;
   SHC_a_ceiling: number;
@@ -800,20 +823,64 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
     t_b = massCapacity_kg_per_m2 / loadingRate_kg_per_m2_per_h;
   }
 
-  // ---- Binding ----
-  const candidates: { tag: BindingConstraint; t: number }[] = [
-    { tag: "head_loss", t: t_h },
-    { tag: "breakthrough", t: t_b },
-    { tag: "time", t: t_max },
-  ];
-  candidates.sort((a, b) => a.t - b.t);
-  const t_run = Math.max(0, candidates[0].t);
-  const binding = candidates[0].tag;
+  // ---- Run termination ----
+  // The filter run terminates when total head loss reaches h_T — i.e. at t_h.
+  // This is the design termination criterion the operator sets via the
+  // 'available head' input (h_T − h₀). Breakthrough is NOT a normal termination
+  // point: it's a quality failure mode that should be avoided. If t_b < t_h
+  // the filter would produce poor-quality filtrate before head loss terminates
+  // the run — flagged as a red warning so the operator can correct (deepen
+  // bed, reduce velocity, change media) rather than running past breakthrough.
+  //
+  // Cap t_run at 999 h for UI renderability. When dC → 0 (filtrate target above
+  // influent) or k_h_eff → 0 (incompressible deposit), t_h diverges to Infinity.
+  // This is meaningful — head loss is never reached — but breaks charts and
+  // stat displays. Surface a warning so the user knows we capped.
+  const T_RUN_CAP_H = 999;
+  let t_run = Math.max(0, t_h);
+  let t_run_capped = false;
+  if (!Number.isFinite(t_run) || t_run > T_RUN_CAP_H) {
+    t_run = T_RUN_CAP_H;
+    t_run_capped = true;
+    if (Number.isFinite(t_h)) {
+      warnings.push(`Run length capped at ${T_RUN_CAP_H} h for display — natural t_h = ${t_h.toFixed(0)} h. Head loss develops very slowly under these conditions.`);
+    } else {
+      warnings.push(`Head loss never reaches terminal under these conditions (dC ≈ 0 or no compressibility). Run length capped at ${T_RUN_CAP_H} h.`);
+    }
+  }
+  const binding: BindingConstraint = "head_loss";
+
+  // Breakthrough-before-terminal-head-loss flag: a design failure indicator.
+  // Use t_h (uncapped) for the comparison so the flag fires correctly even
+  // when t_run was capped.
+  const breakthrough_before_terminal = Number.isFinite(t_b) && Number.isFinite(t_h) && t_b < t_h;
+
+  // Operator-setpoint annotation: does t_max truncate the natural run?
+  const setpoint_truncates_run = Number.isFinite(t_run) && t_max > 0 && t_max < t_run;
+  const t_run_at_setpoint = Math.min(t_run, Math.max(0, t_max));
 
   // ---- Capacities ----
+  // SHC_a at the design terminal (head loss reaches h_T, after capping for UI)
   const UFRV = v * t_run;
   const SHC_a = Number.isFinite(UFRV) ? (eta * dC * UFRV) / 1000 : 0;
   const SHC_v = totalDepth > 0 ? SHC_a / totalDepth : 0;
+
+  // SHC_a at breakthrough — what the operator can actually achieve when
+  // breakthrough fires before terminal head loss. This is the operationally
+  // relevant capacity in failure-mode cases. Equals SHC_a otherwise.
+  const t_for_breakthrough_capacity = Number.isFinite(t_b)
+    ? Math.min(t_b, t_run)
+    : t_run;
+  const UFRV_at_breakthrough = v * t_for_breakthrough_capacity;
+  const SHC_a_at_breakthrough = Number.isFinite(UFRV_at_breakthrough)
+    ? (eta * dC * UFRV_at_breakthrough) / 1000
+    : 0;
+
+  // Capacities at the operator setpoint — what the plant would actually see
+  // if t_max truncates the run. These are display-only; the headline SHC
+  // figures above are the filter's natural capacity.
+  const UFRV_at_setpoint = v * t_run_at_setpoint;
+  const SHC_a_at_setpoint = Number.isFinite(UFRV_at_setpoint) ? (eta * dC * UFRV_at_setpoint) / 1000 : 0;
 
   // ---- Theoretical pore-volume ceilings ----
   const SHC_v_ceiling = porosity * 0.25 * rho_d_eff;
@@ -888,7 +955,12 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
   return {
     rho_d_eff, sigma_b_eff, k_h_eff,
     t_h, t_b, t_max, t_run, binding,
+    setpoint_truncates_run, t_run_at_setpoint,
+    breakthrough_before_terminal,
+    t_run_capped,
     UFRV, SHC_a, SHC_v,
+    UFRV_at_setpoint, SHC_a_at_setpoint,
+    SHC_a_at_breakthrough,
     SHC_v_ceiling, SHC_a_ceiling,
     wetDepositVolume_Lm2, wetDepositVolume_pctVoids,
     flag, ratio,
