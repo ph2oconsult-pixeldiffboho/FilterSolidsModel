@@ -57,6 +57,18 @@ export interface PanelState {
   // approximate backwash water. Leave blank to keep all output specific.
   filterArea_m2?: number;
 
+  // Optional override for the operational SHC_max ceiling (kg/m²). When set
+  // (non-zero), it replaces the composition-weighted literature default in
+  // the mass-binding constraint. Use this to anchor against plant-measured
+  // operational SHC. Leave 0/blank to use literature default.
+  shc_max_override?: number;
+
+  // Operational time horizon (h) — third binding constraint alongside head
+  // loss and mass capacity. Default 72 h (typical drinking water). Set higher
+  // (e.g. 168 h = 1 week) for well-operated low-load filters; lower (e.g.
+  // 48 h) for tightly-scheduled plants.
+  t_ops_h?: number;
+
   // optional measured SHC for flagging
   measuredShcA?: number;
 }
@@ -73,6 +85,7 @@ export function defaultPanelState(): PanelState {
     t_max: 24,
     eta: 0.99,
     temperature: 15,
+    t_ops_h: 72,
     c: {
       influent_NTU: 2,
       ntu_to_mgL: 1.5,
@@ -185,6 +198,8 @@ export function panelToInputs(s: PanelState): {
     },
     composition: fractions,
     polymer_mgL,
+    shc_max_override: (s.shc_max_override ?? 0) > 0 ? s.shc_max_override : undefined,
+    t_ops_h: (s.t_ops_h ?? 0) > 0 ? s.t_ops_h : undefined,
   };
   return { inputs, cinTotal: total, cinA: A.total, cinB, cinWarnings };
 }
@@ -381,6 +396,38 @@ export function InputPanel({
                 hint="Leave 0 to keep results per m² only" />
               <div className="text-[11px] text-amber-800 leading-tight">
                 The model is per m² of filter area (SHC kg/m², UFRV m³/m²). Enter an area to also display plant-total flow, mass captured per run, and backwash water.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 bg-purple-50 border border-purple-200 rounded p-2">
+            <div className="text-[11px] font-medium text-purple-900 mb-1">
+              Optional: SHC_max override (operational data anchor)
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
+              <NumField label="SHC_max override" unit="kg/m²" step={0.1} min={0} max={10}
+                value={state.shc_max_override ?? 0}
+                onChange={v => set("shc_max_override", v > 0 ? v : undefined)}
+                disabled={lockFilterAndOperation}
+                hint="Leave 0 to use composition-weighted literature default" />
+              <div className="text-[11px] text-purple-800 leading-tight">
+                The model uses a composition-weighted operational SHC ceiling (Cleasby & Logsdon 1999, Anderson 2023, Henriksdal 2022) as a parallel binding constraint alongside head loss. Override here if you have plant-measured SHC data — the run will terminate at whichever limit binds first.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 bg-sky-50 border border-sky-200 rounded p-2">
+            <div className="text-[11px] font-medium text-sky-900 mb-1">
+              Operational time horizon (third binding constraint)
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
+              <NumField label="t_ops" unit="h" step={6} min={24} max={168}
+                value={state.t_ops_h ?? 72}
+                onChange={v => set("t_ops_h", v)}
+                disabled={lockFilterAndOperation}
+                hint="Default 72 h (Wateropolis 2020 typical)" />
+              <div className="text-[11px] text-sky-800 leading-tight">
+                Real plants backwash on a fixed schedule for non-head-loss reasons (biofilm growth, scheduled maintenance, fixed timers). Default 72 h matches the typical drinking-water range (48–168 h, Wateropolis 2020) and lime softening practice (50–100 h, Bloetscher 2021). Set higher for well-operated low-load filters; lower for tightly-scheduled plants.
               </div>
             </div>
           </div>

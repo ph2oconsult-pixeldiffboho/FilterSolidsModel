@@ -128,15 +128,27 @@ export function CompareTab() {
 
   // Two charts: capacity (kg/m² and kg/m³) on the left, time-based (hours and m³/m²) on the right
   const capacityData = [
-    { metric: "SHC_a (kg/m²)", A: safe(resA.SHC_a), B: safe(resB.SHC_a) },
-    { metric: "SHC_v (kg/m³)", A: safe(resA.SHC_v), B: safe(resB.SHC_v) },
+    { metric: "SHC_a (kg/m²)",
+      A: safe(resA.operational_caps_horizon ? resA.SHC_a_operational : resA.SHC_a),
+      B: safe(resB.operational_caps_horizon ? resB.SHC_a_operational : resB.SHC_a) },
+    { metric: "SHC_v (kg/m³)",
+      A: safe(resA.operational_caps_horizon
+        ? resA.SHC_a_operational * (resA.SHC_a > 0 ? resA.SHC_v / resA.SHC_a : 0)
+        : resA.SHC_v),
+      B: safe(resB.operational_caps_horizon
+        ? resB.SHC_a_operational * (resB.SHC_a > 0 ? resB.SHC_v / resB.SHC_a : 0)
+        : resB.SHC_v) },
   ];
   // Run length and UFRV are very different in magnitude (hours vs m³/m²) so
   // we plot them as one comparison row with a secondary y-axis instead of
   // forcing them onto a shared axis where run length would visually vanish.
   const runData = [
-    { scenario: labelA, t_run: safe(resA.t_run), UFRV: safe(resA.UFRV) },
-    { scenario: labelB, t_run: safe(resB.t_run), UFRV: safe(resB.UFRV) },
+    { scenario: labelA,
+      t_run: safe(resA.operational_caps_horizon ? resA.t_run_operational : resA.t_run),
+      UFRV: safe(resA.operational_caps_horizon ? resA.UFRV_operational : resA.UFRV) },
+    { scenario: labelB,
+      t_run: safe(resB.operational_caps_horizon ? resB.t_run_operational : resB.t_run),
+      UFRV: safe(resB.operational_caps_horizon ? resB.UFRV_operational : resB.UFRV) },
   ];
 
   const presetCfg = presetId ? PRESET_PAIRS.find(p => p.id === presetId) : null;

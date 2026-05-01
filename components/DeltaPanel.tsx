@@ -12,7 +12,11 @@ function fmt(n: number, dp = 2) {
 function safe(n: number) { return Number.isFinite(n) ? n : 0; }
 
 function bindLabel(b: ShcResult["binding"]) {
-  return b === "head_loss" ? "Head loss" : b === "breakthrough" ? "Breakthrough" : "Time (t_max)";
+  return b === "head_loss" ? "Head loss"
+       : b === "mass" ? "Mass capacity"
+       : b === "operational" ? "Operational time"
+       : b === "breakthrough" ? "Breakthrough"
+       : "Time (t_max)";
 }
 
 interface Row {
@@ -56,17 +60,30 @@ function DeltaCell({ a, b, goodDirection = "up", dp = 2 }: { a: number; b: numbe
 export function DeltaPanel({ A, B, labelA = "A", labelB = "B" }: {
   A: ShcResult; B: ShcResult; labelA?: string; labelB?: string;
 }) {
+  const opSHC_a = (r: ShcResult) => r.operational_caps_horizon ? r.SHC_a_operational : r.SHC_a;
+  const opSHC_v = (r: ShcResult) => {
+    if (!r.operational_caps_horizon) return r.SHC_v;
+    const ratio = r.SHC_a > 0 ? r.SHC_v / r.SHC_a : 0;
+    return r.SHC_a_operational * ratio;
+  };
+  const opTRun = (r: ShcResult) => r.operational_caps_horizon ? r.t_run_operational : r.t_run;
+  const opUFRV = (r: ShcResult) => r.operational_caps_horizon ? r.UFRV_operational : r.UFRV;
+
   const rows: Row[] = [
-    { metric: "SHC (areal)", unit: "kg/m²·run", a: safe(A.SHC_a), b: safe(B.SHC_a), goodDirection: "up", dp: 2 },
-    { metric: "SHC (volumetric)", unit: "kg/m³·run", a: safe(A.SHC_v), b: safe(B.SHC_v), goodDirection: "up", dp: 2 },
-    { metric: "Run length", unit: "h", a: safe(A.t_run), b: safe(B.t_run), goodDirection: "up", dp: 1 },
-    { metric: "UFRV", unit: "m³/m²", a: safe(A.UFRV), b: safe(B.UFRV), goodDirection: "up", dp: 0 },
+    { metric: "SHC (areal)", unit: "kg/m²·run", a: safe(opSHC_a(A)), b: safe(opSHC_a(B)), goodDirection: "up", dp: 2 },
+    { metric: "SHC (volumetric)", unit: "kg/m³·run", a: safe(opSHC_v(A)), b: safe(opSHC_v(B)), goodDirection: "up", dp: 2 },
+    { metric: "Run length", unit: "h", a: safe(opTRun(A)), b: safe(opTRun(B)), goodDirection: "up", dp: 1 },
+    { metric: "UFRV", unit: "m³/m²", a: safe(opUFRV(A)), b: safe(opUFRV(B)), goodDirection: "up", dp: 0 },
     { metric: "t_h (head loss)", unit: "h", a: safe(A.t_h), b: safe(B.t_h), goodDirection: "up", dp: 1 },
+    { metric: "t_mass (SHC_max)", unit: "h", a: safe(A.t_mass), b: safe(B.t_mass), goodDirection: "up", dp: 1 },
+    { metric: "t_ops (schedule)", unit: "h", a: safe(A.t_ops), b: safe(B.t_ops), goodDirection: "up", dp: 0 },
     { metric: "t_b (breakthrough)", unit: "h", a: safe(A.t_b), b: safe(B.t_b), goodDirection: "up", dp: 1 },
     { metric: "Σ L/d", unit: "—", a: safe(A.ld?.total ?? 0), b: safe(B.ld?.total ?? 0), goodDirection: "up", dp: 0 },
     { metric: "ρ_d,eff", unit: "kg/m³", a: safe(A.rho_d_eff), b: safe(B.rho_d_eff), goodDirection: "neutral", dp: 0 },
     { metric: "σ_b,eff", unit: "g/L voids", a: safe(A.sigma_b_eff), b: safe(B.sigma_b_eff), goodDirection: "up", dp: 1 },
     { metric: "k_h,eff", unit: "m·L/(m³·mg)", a: safe(A.k_h_eff), b: safe(B.k_h_eff), goodDirection: "down", dp: 4 },
+    { metric: "K_eff (SHC_max)", unit: "kg/m²·m·mm", a: safe(A.K_eff), b: safe(B.K_eff), goodDirection: "up", dp: 2 },
+    { metric: "SHC_max_eff", unit: "kg/m²", a: safe(A.shc_max_eff), b: safe(B.shc_max_eff), goodDirection: "up", dp: 2 },
     { metric: "SHC_a ceiling", unit: "kg/m²", a: safe(A.SHC_a_ceiling), b: safe(B.SHC_a_ceiling), goodDirection: "neutral", dp: 1 },
   ];
 

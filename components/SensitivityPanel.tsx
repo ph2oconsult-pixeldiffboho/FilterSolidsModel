@@ -12,7 +12,7 @@ type SweepVar =
   | "velocity" | "alum" | "ferric" | "polymer"
   | "temperature" | "C_eff" | "h_budget"
   | "anth_depth" | "anth_de" | "anth_psi" | "anth_porosity"
-  | "blend_ratio";
+  | "blend_ratio" | "t_ops";
 
 const SWEEPS: Record<SweepVar, {
   label: string;
@@ -92,6 +92,12 @@ const SWEEPS: Record<SweepVar, {
     getValue: s => s.blend.fractionA,
     setValue: (s, v) => ({ ...s, blend: { ...s.blend, enabled: true, fractionA: Math.max(0, Math.min(1, v)) } }),
     range: c => [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+  },
+  t_ops: {
+    label: "Operational time horizon (t_ops)", unit: "h",
+    getValue: s => s.t_ops_h ?? 72,
+    setValue: (s, v) => ({ ...s, t_ops_h: v }),
+    range: () => [24, 36, 48, 60, 72, 96, 120, 144, 168],
   },
 };
 

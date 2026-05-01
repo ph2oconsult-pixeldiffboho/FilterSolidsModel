@@ -10,7 +10,10 @@ function fmt(n: number, dp = 2) {
 }
 
 function bindingLabel(b: ShcResult["binding"]) {
-  return b === "head_loss" ? "Head loss" : "Breakthrough";
+  return b === "head_loss" ? "Head loss"
+       : b === "mass" ? "Mass capacity (SHC_max)"
+       : b === "operational" ? "Operational time (t_ops)"
+       : "Breakthrough";
 }
 
 export function ResultPanel({ result, title = "Model output", filterArea_m2, velocity_mh }: {
@@ -43,8 +46,38 @@ export function ResultPanel({ result, title = "Model output", filterArea_m2, vel
       <CardBody className="space-y-4">
 
         <div className="grid grid-cols-2 gap-3">
-          <Stat label="Run length t_run" value={fmt(result.t_run, 1)} unit="h" />
-          <Stat label="UFRV (per m² filter)" value={fmt(result.UFRV, 0)} unit="m³/m²" />
+          {result.operational_caps_horizon ? (
+            <div className="bg-slate-50 rounded border border-slate-200 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">
+                Operational run length
+              </div>
+              <div className="text-lg font-semibold tabular-nums text-slate-900">
+                {fmt(result.t_run_operational, 1)}
+                <span className="text-sm text-slate-500 font-normal ml-1">h</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">
+                Head-loss horizon: {fmt(result.t_run, 0)} h (uncapped)
+              </div>
+            </div>
+          ) : (
+            <Stat label="Run length t_run" value={fmt(result.t_run, 1)} unit="h" />
+          )}
+          {result.operational_caps_horizon ? (
+            <div className="bg-slate-50 rounded border border-slate-200 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium">
+                UFRV (operational)
+              </div>
+              <div className="text-lg font-semibold tabular-nums text-slate-900">
+                {fmt(result.UFRV_operational, 0)}
+                <span className="text-sm text-slate-500 font-normal ml-1">m³/m²</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-0.5">
+                Horizon UFRV: {fmt(result.UFRV, 0)} m³/m²
+              </div>
+            </div>
+          ) : (
+            <Stat label="UFRV (per m² filter)" value={fmt(result.UFRV, 0)} unit="m³/m²" />
+          )}
         </div>
 
         <div className="bg-slate-50 border border-slate-200 rounded p-2.5">
@@ -53,18 +86,29 @@ export function ResultPanel({ result, title = "Model output", filterArea_m2, vel
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <div className="text-[11px] text-slate-500">SHC areal (per m² filter)</div>
+              <div className="text-[11px] text-slate-500">
+                {result.operational_caps_horizon ? "SHC areal (operational)" : "SHC areal (per m² filter)"}
+              </div>
               <div className="text-lg font-semibold tabular-nums text-slate-900">
-                {fmt(result.SHC_a, 2)} <span className="text-xs font-normal text-slate-500">kg/m²·run</span>
+                {fmt(result.operational_caps_horizon ? result.SHC_a_operational : result.SHC_a, 2)} <span className="text-xs font-normal text-slate-500">kg/m²·run</span>
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">
-                Ceiling ≈ {fmt(result.SHC_a_ceiling, 1)} kg/m²
+                {result.operational_caps_horizon
+                  ? `Horizon SHC: ${fmt(result.SHC_a, 2)} kg/m²`
+                  : `Ceiling ≈ ${fmt(result.SHC_a_ceiling, 1)} kg/m²`}
               </div>
             </div>
             <div>
-              <div className="text-[11px] text-slate-500">SHC volumetric (per m³ bed)</div>
+              <div className="text-[11px] text-slate-500">
+                {result.operational_caps_horizon ? "SHC volumetric (operational)" : "SHC volumetric (per m³ bed)"}
+              </div>
               <div className="text-lg font-semibold tabular-nums text-slate-900">
-                {fmt(result.SHC_v, 2)} <span className="text-xs font-normal text-slate-500">kg/m³·run</span>
+                {(() => {
+                  if (!result.operational_caps_horizon) return fmt(result.SHC_v, 2);
+                  // SHC_v_op = SHC_a_op / totalDepth = SHC_a_op × (SHC_v / SHC_a)
+                  const ratio = result.SHC_a > 0 ? result.SHC_v / result.SHC_a : 0;
+                  return fmt(result.SHC_a_operational * ratio, 2);
+                })()} <span className="text-xs font-normal text-slate-500">kg/m³·run</span>
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">
                 Ceiling ≈ {fmt(result.SHC_v_ceiling, 1)} kg/m³
@@ -72,14 +116,30 @@ export function ResultPanel({ result, title = "Model output", filterArea_m2, vel
             </div>
           </div>
           <div className="text-[10px] text-slate-500 mt-1.5 pt-1.5 border-t border-slate-200">
-            SHC_v = SHC_a / total bed depth. The two values look similar at ~1 m bed depth but diverge for shallow or deep beds — for a 1.3 m bed, SHC_v is ~23% lower than SHC_a; for a 0.5 m bed, ~2× higher.
+            {result.operational_caps_horizon
+              ? "Operational values reflect the actual run length the operator experiences (capped by setpoint or 96 h schedule limit). Head-loss horizon shows the mathematical maximum; rarely reached in practice for low-load filters."
+              : "SHC_v = SHC_a / total bed depth. The two values look similar at ~1 m bed depth but diverge for shallow or deep beds — for a 1.3 m bed, SHC_v is ~23% lower than SHC_a; for a 0.5 m bed, ~2× higher."}
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="rounded border px-2 py-1.5 bg-amber-50 border-amber-300">
-            <div className="text-slate-500">t_h (terminal head loss)</div>
-            <div className="font-semibold tabular-nums">{fmt(result.t_h, 1)} h ←</div>
+        <div className="grid grid-cols-4 gap-2 text-xs">
+          <div className={`rounded border px-2 py-1.5 ${result.binding === "head_loss" ? "bg-amber-50 border-amber-300" : "bg-slate-50 border-slate-200"}`}>
+            <div className="text-slate-500">t_h (head loss)</div>
+            <div className="font-semibold tabular-nums">
+              {fmt(result.t_h, 1)} h{result.binding === "head_loss" ? " ←" : ""}
+            </div>
+          </div>
+          <div className={`rounded border px-2 py-1.5 ${result.binding === "mass" ? "bg-amber-50 border-amber-300" : "bg-slate-50 border-slate-200"}`}>
+            <div className="text-slate-500">t_mass (SHC_max)</div>
+            <div className="font-semibold tabular-nums">
+              {Number.isFinite(result.t_mass) ? `${fmt(result.t_mass, 1)} h` : "∞"}{result.binding === "mass" ? " ←" : ""}
+            </div>
+          </div>
+          <div className={`rounded border px-2 py-1.5 ${result.binding === "operational" ? "bg-amber-50 border-amber-300" : "bg-slate-50 border-slate-200"}`}>
+            <div className="text-slate-500">t_ops (schedule)</div>
+            <div className="font-semibold tabular-nums">
+              {fmt(result.t_ops, 0)} h{result.binding === "operational" ? " ←" : ""}
+            </div>
           </div>
           <div className={`rounded border px-2 py-1.5 ${result.breakthrough_before_terminal ? "bg-red-50 border-red-400" : "bg-slate-50 border-slate-200"}`}>
             <div className={result.breakthrough_before_terminal ? "text-red-700" : "text-slate-500"}>
@@ -89,10 +149,9 @@ export function ResultPanel({ result, title = "Model output", filterArea_m2, vel
               {fmt(result.t_b, 1)} h{result.breakthrough_before_terminal ? " ⚠" : ""}
             </div>
           </div>
-          <div className="bg-slate-50 rounded border border-slate-200 px-2 py-1.5">
-            <div className="text-slate-500">t_max (setpoint)</div>
-            <div className="font-semibold tabular-nums">{fmt(result.t_max, 0)} h</div>
-          </div>
+        </div>
+        <div className="text-[10px] text-slate-500 -mt-2">
+          Run terminates at the smallest of t_h, t_mass, t_ops. Binding constraint highlighted (←). Breakthrough fires only as a quality-failure flag.
         </div>
 
         {result.breakthrough_before_terminal && result.SHC_a > 0.01 && (
