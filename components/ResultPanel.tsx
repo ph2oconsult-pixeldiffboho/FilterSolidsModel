@@ -112,15 +112,31 @@ export function ResultPanel({ result, title = "Model output", filterArea_m2, vel
         )}
 
         {result.setpoint_truncates_run && result.SHC_a > 0.01 && !result.breakthrough_before_terminal && (
-          <div className="bg-orange-50 border border-orange-200 rounded px-3 py-2 text-[11px]">
-            <div className="font-semibold text-orange-900 mb-0.5">
-              Operator setpoint truncates the run
+          <div className={`${result.filter_oversized ? "bg-blue-50 border-blue-200" : "bg-orange-50 border-orange-200"} border rounded px-3 py-2 text-[11px]`}>
+            <div className={`font-semibold mb-0.5 ${result.filter_oversized ? "text-blue-900" : "text-orange-900"}`}>
+              {result.filter_oversized
+                ? "Filter is hydraulically oversized for this load"
+                : "Operator setpoint truncates the run"}
             </div>
-            <div className="text-orange-800 leading-tight">
-              Filter run terminates at t_h = {fmt(result.t_run, 1)} h capturing {fmt(result.SHC_a, 2)} kg/m².
-              At t_max = {fmt(result.t_max, 0)} h, the operator would see only
-              SHC_a = <span className="font-semibold tabular-nums">{fmt(result.SHC_a_at_setpoint, 2)} kg/m²</span>
-              {" "}(UFRV {fmt(result.UFRV_at_setpoint, 0)} m³/m²).
+            <div className={`leading-tight ${result.filter_oversized ? "text-blue-800" : "text-orange-800"}`}>
+              {result.filter_oversized ? (
+                <>
+                  Predicted natural run is {fmt(result.t_run, 0)} h ({(result.t_run / Math.max(result.t_max, 1)).toFixed(0)}× the operator setpoint
+                  of {fmt(result.t_max, 0)} h). The filter has substantial spare head budget — backwashing at t_max would be
+                  driven by routine maintenance, not head loss. At {fmt(result.t_max, 0)} h, only{" "}
+                  <span className="font-semibold tabular-nums">{fmt(result.SHC_a_at_setpoint, 2)} kg/m²</span>{" "}
+                  ({((result.t_max / Math.max(result.t_run, 1e-9)) * 100).toFixed(0)}% of natural capacity) has accumulated.
+                  Note that filters are usually backwashed within 1–4 days regardless of head loss for biological/operational reasons —
+                  this calculation is the head-loss horizon, not a recommended run time.
+                </>
+              ) : (
+                <>
+                  Filter run terminates at t_h = {fmt(result.t_run, 1)} h capturing {fmt(result.SHC_a, 2)} kg/m².
+                  At t_max = {fmt(result.t_max, 0)} h, the operator would see only
+                  SHC_a = <span className="font-semibold tabular-nums">{fmt(result.SHC_a_at_setpoint, 2)} kg/m²</span>
+                  {" "}(UFRV {fmt(result.UFRV_at_setpoint, 0)} m³/m²).
+                </>
+              )}
             </div>
           </div>
         )}

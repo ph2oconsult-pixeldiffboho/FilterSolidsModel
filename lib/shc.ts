@@ -619,6 +619,11 @@ export interface ShcResult {
   // Operator setpoint annotation: true if t_max would truncate the natural run
   setpoint_truncates_run: boolean;
   t_run_at_setpoint: number;   // = min(t_run, t_max)
+  // Filter-oversized flag: setpoint_truncates_run AND t_run > 5*t_max.
+  // Indicates the filter is running far below its hydraulic capacity — the
+  // SHC_a_at_setpoint number is technically correct but should not be read as
+  // the filter "underperforming" — it's just barely loaded.
+  filter_oversized: boolean;
   // capacities (filter's design terminal — head loss reaches h_T)
   UFRV: number;       // m3/m2
   SHC_a: number;      // kg/m2/run
@@ -856,8 +861,19 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
   const breakthrough_before_terminal = Number.isFinite(t_b) && Number.isFinite(t_h) && t_b < t_h;
 
   // Operator-setpoint annotation: does t_max truncate the natural run?
+  // Two sub-cases worth distinguishing in the UI:
+  //   (a) Setpoint truncates a normal run (t_run > t_max but t_run within ~3×):
+  //       operator setpoint is conservative; raising it would capture more
+  //       capacity. Standard "orange" flag.
+  //   (b) Filter is grossly oversized for the load (t_run >> t_max, e.g. >5×):
+  //       the filter is running far below capacity. The "SHC at setpoint" number
+  //       (e.g. 0.06 kg/m² when natural is 1.49) is mathematically correct but
+  //       misleading — it makes the filter look like it's failing when it's
+  //       actually just under-utilised. Flag this differently so the user
+  //       sees the real story: head budget vastly exceeds load.
   const setpoint_truncates_run = Number.isFinite(t_run) && t_max > 0 && t_max < t_run;
   const t_run_at_setpoint = Math.min(t_run, Math.max(0, t_max));
+  const filter_oversized = setpoint_truncates_run && t_run > 5 * t_max;
 
   // ---- Capacities ----
   // SHC_a at the design terminal (head loss reaches h_T, after capping for UI)
@@ -956,6 +972,7 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
     rho_d_eff, sigma_b_eff, k_h_eff,
     t_h, t_b, t_max, t_run, binding,
     setpoint_truncates_run, t_run_at_setpoint,
+    filter_oversized,
     breakthrough_before_terminal,
     t_run_capped,
     UFRV, SHC_a, SHC_v,
