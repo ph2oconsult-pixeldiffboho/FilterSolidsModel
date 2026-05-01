@@ -1,5 +1,6 @@
 import { CompareTab } from "@/components/CompareTab";
 import { GitCompare } from "lucide-react";
+import { APP_VERSION, APP_VERSION_DATE, APP_VERSION_TAGLINE } from "@/lib/version";
 
 export default function Home() {
   return (
@@ -11,9 +12,14 @@ export default function Home() {
               <GitCompare className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-slate-900 leading-tight">
-                SHC Comparison Tool
-              </h1>
+              <div className="flex items-baseline gap-2">
+                <h1 className="text-lg font-bold text-slate-900 leading-tight">
+                  SHC Comparison Tool
+                </h1>
+                <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                  {APP_VERSION}
+                </span>
+              </div>
               <p className="text-xs text-slate-500">
                 Solids holding capacity · dual & triple media RGFs · scenario A vs B
               </p>
@@ -35,8 +41,12 @@ export default function Home() {
             Model based on Iwasaki (1937), Cleasby & Logsdon (1999), MWH Water Treatment (2012),
             and the consolidated literature on coagulant and softening floc properties.
           </div>
-          <div>
-            v1.0 · designer edition
+          <div className="flex items-center gap-3">
+            <span className="font-mono">{APP_VERSION}</span>
+            <span className="text-slate-400">·</span>
+            <span>{APP_VERSION_DATE}</span>
+            <span className="text-slate-400">·</span>
+            <span className="text-slate-600">{APP_VERSION_TAGLINE}</span>
           </div>
         </div>
       </footer>

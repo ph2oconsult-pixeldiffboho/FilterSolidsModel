@@ -1,7 +1,8 @@
 "use client";
 import React from "react";
 import { Card, CardBody, CardHeader } from "./ui";
-import { BookOpen } from "lucide-react";
+import { BookOpen, History } from "lucide-react";
+import { CHANGELOG, APP_VERSION } from "@/lib/version";
 
 interface Ref {
   cite: string;
@@ -139,6 +140,36 @@ export function ReferencesPanel() {
               consolidated midpoints. Site-specific calibration against pilot or full-scale data
               is recommended before using model outputs for design commitments.
             </p>
+          </div>
+        </details>
+
+        <details className="group mt-3 pt-3 border-t border-slate-200">
+          <summary className="cursor-pointer flex items-center gap-2 text-base font-semibold text-slate-800 select-none">
+            <History className="w-4 h-4" />
+            Version history
+            <span className="text-xs text-slate-400 font-normal">
+              (current: <span className="font-mono">{APP_VERSION}</span>)
+            </span>
+            <span className="text-xs text-slate-400 font-normal ml-auto">(click to expand)</span>
+          </summary>
+          <div className="mt-3 space-y-4">
+            {CHANGELOG.map((entry, i) => (
+              <div key={i} className={i === 0 ? "border-l-2 border-brand pl-3" : "border-l-2 border-slate-200 pl-3"}>
+                <div className="flex items-baseline gap-2 mb-1">
+                  <span className="font-mono text-sm font-semibold text-slate-800">{entry.version}</span>
+                  <span className="text-[11px] text-slate-500">{entry.date}</span>
+                  {i === 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand text-white font-medium">current</span>
+                  )}
+                </div>
+                <div className="text-xs font-medium text-slate-700 mb-1">{entry.summary}</div>
+                <ul className="text-[11px] text-slate-600 space-y-0.5 list-disc list-inside">
+                  {entry.changes.map((c, j) => (
+                    <li key={j}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         </details>
       </CardHeader>
