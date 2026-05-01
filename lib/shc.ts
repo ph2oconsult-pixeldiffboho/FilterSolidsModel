@@ -570,7 +570,15 @@ export interface OperatingConditions {
   velocity: number;        // m/h
   C_in: number;            // mg/L  (will be auto-computed if components provided)
   C_eff: number;           // mg/L
-  h_T_minus_h0: number;    // m available head loss
+  // Terminal head loss limit (m) — the TOTAL head loss at which the run is
+  // declared over (filter outlet pressure dropped to backwash trigger). This
+  // is the engineering design value (typical 2.0 m for dual media, 2.5–3.0 m
+  // for triple). The model auto-computes clean-bed h₀ from filter geometry
+  // and uses (h_T_total − h₀) as the floc accumulation budget.
+  // For backwards compatibility, callers may still pass h_T_minus_h0; if both
+  // are provided, h_T_total takes precedence.
+  h_T_total?: number;      // m — preferred input
+  h_T_minus_h0?: number;   // m — legacy input (subtraction already done by caller)
   t_max: number;           // h scheduled max run time
   eta: number;             // 0-1 cumulative removal efficiency
   temperature?: number;    // °C, optional — affects k_h via viscosity
@@ -647,6 +655,11 @@ export interface ShcResult {
   // for flagging when measured value provided
   flag?: FlagTier;
   ratio?: number;
+  // Head budget breakdown — for UI display so user can see how the model
+  // partitioned terminal head loss between clean-bed and floc accumulation.
+  h_T_total_used: number;     // m, total terminal limit used by the calc
+  h0_used: number;            // m, clean-bed head loss subtracted
+  dh_floc_budget: number;     // m, head budget that drives floc accumulation
   // input-validity warnings (non-fatal but worth surfacing in the UI)
   warnings: string[];
   // L/d analysis (only populated when filter.layers is provided)
@@ -716,9 +729,6 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
   const v = Math.max(0, operation.velocity);
   if (operation.velocity <= 0) warnings.push("Filtration velocity must be > 0; treating as 0.");
 
-  const dh = Math.max(0, operation.h_T_minus_h0);
-  if (operation.h_T_minus_h0 <= 0) warnings.push("Available head must be > 0; treating as 0.");
-
   // ---- Resolve depth: prefer per-layer breakdown if provided ----
   // If the user supplied per-layer depths, those are authoritative and the
   // aggregate totalDepth is derived from them. This also enables L/d output.
@@ -732,6 +742,51 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
   } else {
     totalDepth = Math.max(0, filter.totalDepth);
     if (filter.totalDepth <= 0) warnings.push("Total media depth must be > 0; treating as 0.");
+  }
+
+  // ---- Clean-bed head loss (Carman-Kozeny) ----
+  // Computed early because the floc-accumulation budget = h_T_total − h₀.
+  // When per-layer breakdown is missing we cannot compute h₀; in that case
+  // we treat h₀ as 0 and the legacy h_T_minus_h0 input is used directly.
+  let headLoss: CleanBedHeadLossResult | undefined;
+  if (filter.layers && filter.layers.length > 0) {
+    headLoss = computeCleanBedHeadLoss(
+      filter.layers,
+      v,
+      operation.temperature ?? 15,
+    );
+    if (headLoss.ergun_warning) {
+      warnings.push("Particle Reynolds number > 10 in at least one layer — Carman–Kozeny is being extrapolated outside its strict validity range. Consider Ergun-equation refinement or check velocity.");
+    }
+    // Surface per-layer issues (e.g. zero d_e) into the user-visible warnings.
+    for (const w of headLoss.warnings) warnings.push(w);
+  }
+  const h0 = headLoss?.total_h0 ?? 0;
+
+  // ---- Resolve floc-accumulation head budget (dh) ----
+  // Two input modes for backward compatibility:
+  //   (a) operation.h_T_total: total terminal head loss limit (m). Preferred.
+  //       The model subtracts the calculated clean-bed h₀ to get the budget.
+  //   (b) operation.h_T_minus_h0: the budget itself (legacy callers that
+  //       pre-subtracted h₀ before passing it in).
+  // h_T_total takes precedence when both are provided.
+  let dh: number;
+  let h_T_total: number; // for downstream display
+  if (operation.h_T_total !== undefined && operation.h_T_total !== null) {
+    h_T_total = Math.max(0, operation.h_T_total);
+    dh = Math.max(0, h_T_total - h0);
+    if (h_T_total <= 0) {
+      warnings.push("Terminal head loss limit (h_T) must be > 0; treating as 0.");
+    } else if (h0 >= h_T_total) {
+      warnings.push(`Clean-bed head loss h₀ = ${h0.toFixed(2)} m already meets or exceeds the terminal limit h_T = ${h_T_total.toFixed(2)} m. No head budget remains for floc accumulation. Reduce velocity, use coarser media, or increase h_T.`);
+    } else if (dh < 0.3) {
+      warnings.push(`Floc-accumulation budget (h_T − h₀) = ${dh.toFixed(2)} m is very small. Most of the design head is spent on clean-bed friction; runs will be very short. Consider coarser media or higher h_T.`);
+    }
+  } else {
+    // Legacy path: caller supplied h_T_minus_h0 directly
+    dh = Math.max(0, operation.h_T_minus_h0 ?? 0);
+    if ((operation.h_T_minus_h0 ?? 0) <= 0) warnings.push("Available head must be > 0; treating as 0.");
+    h_T_total = h0 + dh;
   }
 
   // Bed-average porosity: if per-layer porosities are provided, use a depth-
@@ -842,6 +897,11 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
   // This is meaningful — head loss is never reached — but breaks charts and
   // stat displays. Surface a warning so the user knows we capped.
   const T_RUN_CAP_H = 999;
+  // Soft "operational realism" threshold (hours) — beyond this, the model's
+  // head-loss-horizon prediction stops being operationally meaningful because
+  // real plants backwash on schedule for non-head-loss reasons (biological
+  // growth, mudball formation, scheduled maintenance) regardless of head loss.
+  const T_RUN_OPERATIONAL_LIMIT_H = 96;
   let t_run = Math.max(0, t_h);
   let t_run_capped = false;
   if (!Number.isFinite(t_run) || t_run > T_RUN_CAP_H) {
@@ -852,6 +912,8 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
     } else {
       warnings.push(`Head loss never reaches terminal under these conditions (dC ≈ 0 or no compressibility). Run length capped at ${T_RUN_CAP_H} h.`);
     }
+  } else if (t_run > T_RUN_OPERATIONAL_LIMIT_H) {
+    warnings.push(`Predicted head-loss-horizon run length ${t_run.toFixed(0)} h exceeds typical operational practice (~96 h). Real plants backwash on schedule (24–72 h typical) for biological/operational reasons regardless of head loss. The SHC_a value here is the head-loss capacity, not a recommended run length.`);
   }
   const binding: BindingConstraint = "head_loss";
 
@@ -935,30 +997,13 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
     warnings.push("Predicted SHC near zero — flag tier not assigned (ratio undefined).");
   }
 
-  // ---- Clean-bed head loss (Carman–Kozeny per layer) ----
-  // Only computed when per-layer data is provided. h0 is informational here;
-  // h_T_minus_h0 (the available head budget for floc) is the binding quantity
-  // for SHC calculation, kept as the user input.
-  let headLoss: CleanBedHeadLossResult | undefined;
-  let development: HeadLossDevelopmentResult | undefined;
-  if (filter.layers && filter.layers.length > 0) {
-    headLoss = computeCleanBedHeadLoss(
-      filter.layers,
-      v,
-      operation.temperature ?? 15,
-    );
-    if (headLoss.ergun_warning) {
-      warnings.push("Particle Reynolds number > 10 in at least one layer — Carman–Kozeny is being extrapolated outside its strict validity range. Consider Ergun-equation refinement or check velocity.");
-    }
-    // Surface per-layer issues (e.g. zero d_e) into the user-visible warnings.
-    for (const w of headLoss.warnings) warnings.push(w);
-  }
-
   // Head loss development curve — generated whenever we have a meaningful
   // load and rate, regardless of whether per-layer breakdown is supplied.
+  // (headLoss was computed earlier so dh could be derived from h_T_total.)
+  let development: HeadLossDevelopmentResult | undefined;
   if (k_h_eff > 0 && dh > 0) {
     development = computeHeadLossDevelopment(
-      headLoss?.total_h0 ?? 0,
+      h0,
       dh,
       k_h_eff,
       dC,
@@ -981,6 +1026,9 @@ export function computeShc(input: ShcInputs, measuredShcA?: number): ShcResult {
     SHC_v_ceiling, SHC_a_ceiling,
     wetDepositVolume_Lm2, wetDepositVolume_pctVoids,
     flag, ratio,
+    h_T_total_used: h_T_total,
+    h0_used: h0,
+    dh_floc_budget: dh,
     warnings,
     ld,
     headLoss,
@@ -1007,6 +1055,16 @@ export const FLAG_LABELS: Record<FlagTier, { label: string; tone: string; descri
 
 // Convenience: compute C_in from individual contributions
 export type CoagulationRegime = "sweep" | "charge_neutralisation";
+
+// Lime softening operating mode — affects what's a sensible split between
+// Ca-path and Mg-path lime doses, but does not change the model math itself
+// (the user retains direct control over the two dose fields). The mode is
+// primarily a UX guide:
+//   'ca_only' — selective Ca removal at pH ~9.5–10.0; lime to Mg-path = 0
+//   'partial_mg' — pH 10.5–11.0; some Mg removal alongside Ca
+//   'excess_mg' — pH 11.0–11.3 (excess lime); maximum Mg(OH)₂ generation
+// Refs: Crittenden et al. 2012 Ch. 13; AWWA M16.
+export type LimeMode = "ca_only" | "partial_mg" | "excess_mg";
 
 // ----------------------------------------------------------------------------
 // Coagulant dose basis conversion
@@ -1068,6 +1126,10 @@ export interface CinComponents {
   // Defined by the floc morphology, not by dose or pH alone — typical CN
   // operating windows (pH 5–6, lower doses) are advisory not constraints.
   regime?: CoagulationRegime;
+  // Lime softening operating mode — UX guide for splitting lime dose
+  // between Ca-path and Mg-path. Does not alter model math; user retains
+  // direct control over the two dose fields.
+  lime_mode?: LimeMode;
   // Upstream stage: when omitted, defaults to 'direct'.
   upstream?: UpstreamStageConfig;
 }
@@ -1190,24 +1252,11 @@ export function computeCin(c: CinComponents) {
   push("caco3", totalCaCO3);
   push("mgoh2", mgoh2);
 
-  // Regime-plausibility warnings.
-  // CN regime requires keeping the metal hydroxide soluble — at high doses the
-  // solubility limit is exceeded and the system tips into sweep regardless of pH.
-  // These thresholds are approximate and intended to flag implausible inputs,
-  // not enforce them. (See Pernitsky 2001, Crittenden et al. 2012.)
+  // Regime is a user choice that defines floc morphology — the model respects
+  // that choice and applies the corresponding ρ_d, σ_b, k_h values. The user
+  // is responsible for selecting a regime appropriate to their actual
+  // operating chemistry (pH, dose, alkalinity).
   const warnings: string[] = [];
-  if (regime === "charge_neutralisation" && !measuredMode) {
-    if (alum > 15)
-      warnings.push(`Alum ${alum} mg/L with charge-neutralisation regime is implausible — at >15 mg/L the system tips into sweep regardless of pH due to Al(OH)₃ solubility. Reduce dose or set regime to sweep.`);
-    if (pacl > 12)
-      warnings.push(`PACl ${pacl} mg/L with charge-neutralisation regime is implausible at this dose. Consider sweep regime.`);
-    if (ferric > 8)
-      warnings.push(`Ferric ${ferric} mg/L with charge-neutralisation regime is implausible — Fe(OH)₃ has very low solubility, so most dosed Fe precipitates regardless of pH.`);
-    // Lime softening operates at pH 10–11; CN regime requires pH 5–6.
-    // The two cannot coexist physically in one stream.
-    if (lime_ca > 0 || lime_mg > 0)
-      warnings.push("Lime softening + charge-neutralisation regime in same stream is physically impossible — softening requires pH 10–11 while CN requires pH 5–6. Use blend mode to combine separately-treated streams.");
-  }
 
   // Upstream-mode advisory warnings
   if (upstream.mode === "clarifier") {

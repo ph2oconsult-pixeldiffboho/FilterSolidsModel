@@ -21,13 +21,60 @@ export function CompareTab() {
   const [labelA, setLabelA] = useState(LABEL_A_DEFAULT);
   const [labelB, setLabelB] = useState(LABEL_B_DEFAULT);
   const [scenarioA, setA] = useState<PanelState>(defaultPanelState());
-  const [scenarioB, setB] = useState<PanelState>(() => {
+  const [scenarioB, setBRaw] = useState<PanelState>(() => {
     const s = defaultPanelState();
     s.c.alum_mgL = 0;
     s.c.ferric_mgL = 12;
     return s;
   });
   const [presetId, setPresetId] = useState<string>("");
+  // When true, Scenario B's filter geometry and operating parameters are
+  // mirrored from Scenario A. Chemistry/upstream fields stay independent so
+  // the A vs B comparison still has meaning. Default true: most users want
+  // to compare chemistry on the same filter, not different filter designs.
+  const [linkFilterAndOperation, setLink] = useState<boolean>(true);
+
+  // Slice of PanelState that gets mirrored when link is on. Filter geometry
+  // and operating parameters; chemistry (`c`, `blend`, `doseBasisA`) and
+  // measured-SHC stay scenario-specific.
+  const filterAndOperationSlice = (s: PanelState): Partial<PanelState> => ({
+    filterType: s.filterType,
+    porosity: s.porosity,
+    L_eff_factor: s.L_eff_factor,
+    layers: s.layers,
+    velocity: s.velocity,
+    C_eff: s.C_eff,
+    h_T_total: s.h_T_total,
+    t_max: s.t_max,
+    eta: s.eta,
+    temperature: s.temperature,
+    filterArea_m2: s.filterArea_m2,
+  });
+
+  // Effective Scenario B: when linked, overlay A's filter+operation onto B
+  // so B's chemistry persists but B's filter/operation reflects A. We do this
+  // in the derived view rather than mutating B's state, so toggling the link
+  // off restores B's previous values cleanly.
+  const effectiveB: PanelState = useMemo(
+    () => linkFilterAndOperation
+      ? { ...scenarioB, ...filterAndOperationSlice(scenarioA) }
+      : scenarioB,
+    [linkFilterAndOperation, scenarioA, scenarioB],
+  );
+
+  // setB wrapper: when linked, edits to filter/operation in Scenario B are
+  // ignored (those fields are read-only in the UI anyway). Edits to chemistry
+  // pass through to scenarioB normally. We detect chemistry-only edits by
+  // re-applying the link slice from A on top of whatever the InputPanel sent
+  // back, so that any spurious filter/operation values from B's old state
+  // don't sneak through.
+  const setB = (next: PanelState) => {
+    if (linkFilterAndOperation) {
+      setBRaw({ ...next, ...filterAndOperationSlice(scenarioA) });
+    } else {
+      setBRaw(next);
+    }
+  };
 
   const resA = useMemo(() => {
     const p = panelToInputs(scenarioA);
@@ -35,10 +82,10 @@ export function CompareTab() {
     return { ...r, warnings: [...p.cinWarnings, ...r.warnings] };
   }, [scenarioA]);
   const resB = useMemo(() => {
-    const p = panelToInputs(scenarioB);
+    const p = panelToInputs(effectiveB);
     const r = computeShc(p.inputs);
     return { ...r, warnings: [...p.cinWarnings, ...r.warnings] };
-  }, [scenarioB]);
+  }, [effectiveB]);
 
   const applyPreset = (id: string) => {
     setPresetId(id);
@@ -46,7 +93,7 @@ export function CompareTab() {
     const pair = applyPresetPair(id, defaultPanelState());
     if (pair) {
       setA(pair.A);
-      setB(pair.B);
+      setBRaw(pair.B);
       const cfg = PRESET_PAIRS.find(p => p.id === id);
       if (cfg) {
         setLabelA(cfg.A.label);
@@ -57,7 +104,7 @@ export function CompareTab() {
 
   const swap = () => {
     setA(scenarioB);
-    setB(scenarioA);
+    setBRaw(scenarioA);
     const tmp = labelA;
     setLabelA(labelB);
     setLabelB(tmp);
@@ -65,7 +112,7 @@ export function CompareTab() {
 
   const reset = () => {
     setA(defaultPanelState());
-    setB((() => {
+    setBRaw((() => {
       const s = defaultPanelState();
       s.c.alum_mgL = 0;
       s.c.ferric_mgL = 12;
@@ -117,25 +164,41 @@ export function CompareTab() {
               </div>
             )}
           </div>
-          <div className="flex gap-2 shrink-0">
-            <button
-              onClick={swap}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm
-                         bg-white border border-slate-300 rounded text-slate-700
-                         hover:bg-slate-50"
-              title="Swap A and B"
-            >
-              <ArrowLeftRight className="w-4 h-4" /> Swap
-            </button>
-            <button
-              onClick={reset}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm
-                         bg-white border border-slate-300 rounded text-slate-700
-                         hover:bg-slate-50"
-              title="Reset to defaults"
-            >
-              <RefreshCw className="w-4 h-4" /> Reset
-            </button>
+          <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end shrink-0">
+            <label className="inline-flex items-center gap-2 px-3 py-1.5 text-sm
+                              bg-white border border-slate-300 rounded text-slate-700
+                              cursor-pointer hover:bg-slate-50 select-none"
+                   title={linkFilterAndOperation
+                     ? "Filter geometry and operation linked — edit Scenario A to update both"
+                     : "Filter geometry and operation are independent between scenarios"}>
+              <input
+                type="checkbox"
+                checked={linkFilterAndOperation}
+                onChange={e => setLink(e.target.checked)}
+                className="accent-brand"
+              />
+              <span className="whitespace-nowrap">Link filter &amp; operation</span>
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={swap}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm
+                           bg-white border border-slate-300 rounded text-slate-700
+                           hover:bg-slate-50"
+                title="Swap A and B"
+              >
+                <ArrowLeftRight className="w-4 h-4" /> Swap
+              </button>
+              <button
+                onClick={reset}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm
+                           bg-white border border-slate-300 rounded text-slate-700
+                           hover:bg-slate-50"
+                title="Reset to defaults"
+              >
+                <RefreshCw className="w-4 h-4" /> Reset
+              </button>
+            </div>
           </div>
         </CardBody>
       </Card>
@@ -208,10 +271,11 @@ export function CompareTab() {
         <div className="space-y-4">
           <ScenarioLabel value={labelB} onChange={setLabelB} colour="bg-brand-light" />
           <ResultPanel result={resB} title={`${labelB} — output`}
-            filterArea_m2={scenarioB.filterArea_m2} velocity_mh={scenarioB.velocity} />
+            filterArea_m2={effectiveB.filterArea_m2} velocity_mh={effectiveB.velocity} />
           <HeadLossPanel result={resB} title={`${labelB} — head loss`} />
-          <InputPanel state={scenarioB} onChange={setB} title={`${labelB} — inputs`} />
-          <SensitivityPanel state={scenarioB} label={labelB} />
+          <InputPanel state={effectiveB} onChange={setB} title={`${labelB} — inputs`}
+            lockFilterAndOperation={linkFilterAndOperation} />
+          <SensitivityPanel state={effectiveB} label={labelB} />
         </div>
       </div>
 

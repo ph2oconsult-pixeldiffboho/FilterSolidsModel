@@ -58,10 +58,10 @@ const SWEEPS: Record<SweepVar, {
     range: c => sweepRange(c, 0.1, 5, 9, 0.05),
   },
   h_budget: {
-    label: "Head budget (h_T − h₀)", unit: "m",
-    getValue: s => s.h_T_minus_h0,
-    setValue: (s, v) => ({ ...s, h_T_minus_h0: v }),
-    range: c => sweepRange(c, 0.4, 2, 9, 0.1),
+    label: "Terminal head loss limit (h_T)", unit: "m",
+    getValue: s => s.h_T_total,
+    setValue: (s, v) => ({ ...s, h_T_total: v }),
+    range: c => sweepRange(c, 1.0, 4.0, 9, 0.1),
   },
   anth_depth: {
     label: "Top layer depth", unit: "m",

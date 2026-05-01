@@ -3,7 +3,7 @@ import React from "react";
 import { Card, CardBody, CardHeader, NumField, Select, SectionTitle } from "./ui";
 import { CinComponents, FilterType, ShcInputs, SolidsKey, SolidsFraction, SOLIDS,
   defaultLeffFactor, computeCin, MediaLayer, defaultLayers, MEDIA_PROPS,
-  CoagulationRegime, DOSE_CONV, UpstreamStage } from "@/lib/shc";
+  CoagulationRegime, DOSE_CONV, UpstreamStage, LimeMode } from "@/lib/shc";
 
 export type DoseBasis = "product" | "metal";
 
@@ -17,7 +17,11 @@ export interface PanelState {
   // operation
   velocity: number;
   C_eff: number;
-  h_T_minus_h0: number;
+  // Terminal head loss limit (m) — total filter head loss at which the run is
+  // declared over. The model computes clean-bed h₀ from filter geometry and
+  // subtracts it to get the floc-accumulation budget (dh = h_T − h₀).
+  // Typical engineering values: 2.0 m (dual media), 2.5–3.0 m (triple media).
+  h_T_total: number;
   t_max: number;
   eta: number;
   temperature: number;
@@ -65,7 +69,7 @@ export function defaultPanelState(): PanelState {
     layers: defaultLayers("dual"),
     velocity: 8,
     C_eff: 0.15,
-    h_T_minus_h0: 1.6,
+    h_T_total: 2.05,
     t_max: 24,
     eta: 0.99,
     temperature: 15,
@@ -80,6 +84,7 @@ export function defaultPanelState(): PanelState {
       polymer_mgL: 0.1,
       pac_mgL: 0,
       regime: "sweep",
+      lime_mode: "ca_only",
       upstream: { mode: "direct" },
     },
     doseBasisA: "product",
@@ -99,6 +104,7 @@ export function defaultPanelState(): PanelState {
         polymer_mgL: 0,
         pac_mgL: 0,
         regime: "sweep",
+        lime_mode: "partial_mg",
         upstream: { mode: "direct" },
       },
       doseBasisB: "product",
@@ -172,7 +178,7 @@ export function panelToInputs(s: PanelState): {
       velocity: s.velocity,
       C_in: total,
       C_eff: s.C_eff,
-      h_T_minus_h0: s.h_T_minus_h0,
+      h_T_total: s.h_T_total,
       t_max: s.t_max,
       eta: s.eta,
       temperature: s.temperature,
@@ -185,11 +191,15 @@ export function panelToInputs(s: PanelState): {
 
 export function InputPanel({
   state, onChange, includeMeasured = false, title = "Inputs",
+  lockFilterAndOperation = false,
 }: {
   state: PanelState;
   onChange: (s: PanelState) => void;
   includeMeasured?: boolean;
   title?: string;
+  // When true, filter geometry and operating-parameter fields are read-only.
+  // Used in CompareTab when "Link filter & operation" is on for Scenario B.
+  lockFilterAndOperation?: boolean;
 }) {
   const set = <K extends keyof PanelState>(k: K, v: PanelState[K]) => onChange({ ...state, [k]: v });
   const setC = <K extends keyof CinComponents>(k: K, v: CinComponents[K]) =>
@@ -239,6 +249,18 @@ export function InputPanel({
       </CardHeader>
       <CardBody className="space-y-5">
 
+        {lockFilterAndOperation && (
+          <div className="bg-slate-100 border border-slate-300 rounded px-3 py-2 text-[11px] text-slate-700 flex items-start gap-2">
+            <svg className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="5" y="11" width="14" height="10" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+            <span>
+              <span className="font-medium">Filter &amp; operation linked.</span> These fields mirror Scenario A — edit them there, or unlink at the top of the page to compare a different filter design. Chemistry and upstream stage stay independent.
+            </span>
+          </div>
+        )}
+
         <div>
           <SectionTitle>Filter configuration</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -246,6 +268,7 @@ export function InputPanel({
               label="Filter type"
               value={state.filterType}
               onChange={onFilterTypeChange}
+              disabled={lockFilterAndOperation}
               options={[
                 { value: "dual", label: "Dual media (anthracite/sand)" },
                 { value: "triple", label: "Triple media (anthracite/sand/garnet)" },
@@ -254,6 +277,7 @@ export function InputPanel({
             />
             <NumField label="L_eff factor" step={0.05} min={0.4} max={1.0}
               value={state.L_eff_factor} onChange={v => set("L_eff_factor", v)}
+              disabled={lockFilterAndOperation}
               hint="Depth utilisation · 0.6 mono / 0.8 dual / 0.85 triple" />
           </div>
 
@@ -263,7 +287,7 @@ export function InputPanel({
             </div>
             <div className="space-y-2">
               {state.layers.map((layer, i) => (
-                <div key={i} className="border border-slate-200 rounded p-2 bg-slate-50/30">
+                <div key={i} className={`border rounded p-2 ${lockFilterAndOperation ? "border-slate-200 bg-slate-100/40" : "border-slate-200 bg-slate-50/30"}`}>
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-12 sm:col-span-3">
                       <span className="block text-[11px] font-medium text-slate-700">{layer.label}</span>
@@ -271,15 +295,17 @@ export function InputPanel({
                     </div>
                     <div className="col-span-6 sm:col-span-4">
                       <NumField label="Depth" unit="m" step={0.05} min={0.05} max={3}
-                        value={layer.depth} onChange={v => setLayer(i, { depth: v })} />
+                        value={layer.depth} onChange={v => setLayer(i, { depth: v })}
+                        disabled={lockFilterAndOperation} />
                     </div>
                     <div className="col-span-6 sm:col-span-5">
                       <NumField label="d_e" unit="mm" step={0.05} min={0.1} max={3}
-                        value={layer.d_e} onChange={v => setLayer(i, { d_e: v })} />
+                        value={layer.d_e} onChange={v => setLayer(i, { d_e: v })}
+                        disabled={lockFilterAndOperation} />
                     </div>
                   </div>
-                  <details className="mt-2">
-                    <summary className="text-[11px] text-slate-500 cursor-pointer hover:text-brand select-none">
+                  <details className="mt-2" {...(lockFilterAndOperation ? { open: false } : {})}>
+                    <summary className={`text-[11px] select-none ${lockFilterAndOperation ? "text-slate-400 cursor-not-allowed pointer-events-none" : "text-slate-500 cursor-pointer hover:text-brand"}`}>
                       Advanced properties (UC, ψ, SG, ε)
                     </summary>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 pl-2 border-l-2 border-slate-200">
@@ -289,15 +315,19 @@ export function InputPanel({
                         return <>
                           <NumField label="UC" step={0.05} min={1.0} max={2.5}
                             value={layer.uc} onChange={v => setLayer(i, { uc: v })}
+                            disabled={lockFilterAndOperation}
                             hint={`d60/d10 · ${refLabel} ${ref.uc_range[0].toFixed(1)}–${ref.uc_range[1].toFixed(1)}`} />
                           <NumField label="Sphericity ψ" step={0.01} min={0.3} max={1.0}
                             value={layer.sphericity} onChange={v => setLayer(i, { sphericity: v })}
+                            disabled={lockFilterAndOperation}
                             hint={`${refLabel} ≈ ${ref.sphericity.toFixed(2)}`} />
                           <NumField label="SG" step={0.05} min={1.0} max={5.0}
                             value={layer.sg} onChange={v => setLayer(i, { sg: v })}
+                            disabled={lockFilterAndOperation}
                             hint={`${refLabel} ≈ ${ref.sg.toFixed(2)}`} />
                           <NumField label="Porosity ε" step={0.01} min={0.3} max={0.6}
                             value={layer.porosity} onChange={v => setLayer(i, { porosity: v })}
+                            disabled={lockFilterAndOperation}
                             hint={`${refLabel} ≈ ${ref.porosity.toFixed(2)}`} />
                         </>;
                       })()}
@@ -316,20 +346,26 @@ export function InputPanel({
           <SectionTitle>Operation</SectionTitle>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <NumField label="Filtration velocity" unit="m/h" step={0.5} min={0.1} max={30}
-              value={state.velocity} onChange={v => set("velocity", v)} />
-            <NumField label="Head budget for floc (h_T − h₀)" unit="m" step={0.1} min={0.1} max={5}
-              value={state.h_T_minus_h0} onChange={v => set("h_T_minus_h0", v)}
-              hint="Available head for solids accumulation, beyond clean bed" />
+              value={state.velocity} onChange={v => set("velocity", v)}
+              disabled={lockFilterAndOperation} />
+            <NumField label="Terminal head loss limit (h_T)" unit="m" step={0.1} min={0.1} max={6}
+              value={state.h_T_total} onChange={v => set("h_T_total", v)}
+              disabled={lockFilterAndOperation}
+              hint="Total filter head loss at backwash trigger. Typical: 2.0 m dual / 2.5–3.0 m triple. Model subtracts clean-bed h₀ to get floc budget." />
             <NumField label="Filtrate target C_eff" unit="mg/L" step={0.05} min={0} max={5}
               value={state.C_eff} onChange={v => set("C_eff", v)}
+              disabled={lockFilterAndOperation}
               hint="0.10 NTU ≈ 0.15 mg/L" />
             <NumField label="Max run time t_max" unit="h" step={1} min={1} max={168}
-              value={state.t_max} onChange={v => set("t_max", v)} />
+              value={state.t_max} onChange={v => set("t_max", v)}
+              disabled={lockFilterAndOperation} />
             <NumField label="Removal efficiency η" step={0.01} min={0.5} max={1.0}
               value={state.eta} onChange={v => set("eta", v)}
+              disabled={lockFilterAndOperation}
               hint="0.95–0.995 typical" />
             <NumField label="Water temperature" unit="°C" step={1} min={0} max={40}
               value={state.temperature} onChange={v => set("temperature", v)}
+              disabled={lockFilterAndOperation}
               hint="Cold water → higher k_h" />
           </div>
 
@@ -341,6 +377,7 @@ export function InputPanel({
               <NumField label="Filter area (per cell)" unit="m²" step={1} min={0} max={500}
                 value={state.filterArea_m2 ?? 0}
                 onChange={v => set("filterArea_m2", v > 0 ? v : undefined)}
+                disabled={lockFilterAndOperation}
                 hint="Leave 0 to keep results per m² only" />
               <div className="text-[11px] text-amber-800 leading-tight">
                 The model is per m² of filter area (SHC kg/m², UFRV m³/m²). Enter an area to also display plant-total flow, mass captured per run, and backwash water.
@@ -492,13 +529,49 @@ export function InputPanel({
                   onChange={v => setC("ferric_mgL", v * DOSE_CONV.ferric_mgPerMgFe)}
                   hint={`= ${state.c.ferric_mgL.toFixed(1)} mg/L FeCl₃`} />
               )}
-              <NumField label="Lime → CaCO₃ path" unit="mg/L lime" step={1} min={0} max={500}
-                value={state.c.lime_caco3_mgL} onChange={v => setC("lime_caco3_mgL", v)}
-                hint="Ca-hardness fraction" />
-              <NumField label="Lime → Mg(OH)₂ path" unit="mg/L lime" step={1} min={0} max={500}
-                value={state.c.lime_mgoh2_mgL} onChange={v => setC("lime_mgoh2_mgL", v)}
-                hint="Mg path also yields CaCO₃" />
             </>)}
+            {state.c.upstream?.mode !== "measured_inlet" && (
+              <div className="sm:col-span-2 bg-emerald-50 border border-emerald-200 rounded p-2 -mx-px">
+                <div className="text-[11px] font-medium text-emerald-900 mb-1.5">
+                  Lime softening (optional)
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                  <Select<LimeMode>
+                    label="Lime softening mode"
+                    value={state.c.lime_mode ?? "ca_only"}
+                    onChange={v => {
+                      // When switching to ca_only, force Mg-path to 0
+                      const next = { ...state.c, lime_mode: v };
+                      if (v === "ca_only") next.lime_mgoh2_mgL = 0;
+                      onChange({ ...state, c: next });
+                    }}
+                    options={[
+                      { value: "ca_only", label: "Ca removal only (pH ~9.5–10)" },
+                      { value: "partial_mg", label: "Partial Mg removal (pH 10.5–11)" },
+                      { value: "excess_mg", label: "Max Mg removal / excess lime (pH 11–11.3)" },
+                    ]}
+                    hint={
+                      state.c.lime_mode === "excess_mg"
+                        ? "Excess lime — both Ca and Mg fully removed; floc has voluminous Mg(OH)₂"
+                        : state.c.lime_mode === "partial_mg"
+                          ? "Mid-pH softening — some Mg precipitates alongside CaCO₃"
+                          : "Selective Ca softening — Mg-path stays soluble"
+                    }
+                  />
+                  <div /> {/* spacer */}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <NumField label="Lime → CaCO₃ path" unit="mg/L lime" step={1} min={0} max={500}
+                    value={state.c.lime_caco3_mgL} onChange={v => setC("lime_caco3_mgL", v)}
+                    hint="Ca-hardness fraction" />
+                  {(state.c.lime_mode ?? "ca_only") !== "ca_only" && (
+                    <NumField label="Lime → Mg(OH)₂ path" unit="mg/L lime" step={1} min={0} max={500}
+                      value={state.c.lime_mgoh2_mgL} onChange={v => setC("lime_mgoh2_mgL", v)}
+                      hint="Mg path also yields CaCO₃" />
+                  )}
+                </div>
+              </div>
+            )}
             <NumField
               label={state.c.upstream?.mode === "clarifier" || state.c.upstream?.mode === "measured_inlet"
                 ? "Filter aid (post-clarifier)"
@@ -609,11 +682,39 @@ export function InputPanel({
                       onChange={v => setCB("ferric_mgL", v * DOSE_CONV.ferric_mgPerMgFe)}
                       hint={`= ${state.blend.cB.ferric_mgL.toFixed(1)} mg/L FeCl₃`} />
                   )}
-                  <NumField label="Lime → CaCO₃ path" unit="mg/L lime" step={1} min={0} max={500}
-                    value={state.blend.cB.lime_caco3_mgL} onChange={v => setCB("lime_caco3_mgL", v)} />
-                  <NumField label="Lime → Mg(OH)₂ path" unit="mg/L lime" step={1} min={0} max={500}
-                    value={state.blend.cB.lime_mgoh2_mgL} onChange={v => setCB("lime_mgoh2_mgL", v)} />
                 </>)}
+                {state.blend.cB.upstream?.mode !== "measured_inlet" && (
+                  <div className="sm:col-span-2 bg-emerald-50 border border-emerald-200 rounded p-2">
+                    <div className="text-[11px] font-medium text-emerald-900 mb-1.5">
+                      Lime softening (optional)
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                      <Select<LimeMode>
+                        label="Lime softening mode"
+                        value={state.blend.cB.lime_mode ?? "ca_only"}
+                        onChange={v => {
+                          const next = { ...state.blend.cB, lime_mode: v };
+                          if (v === "ca_only") next.lime_mgoh2_mgL = 0;
+                          onChange({ ...state, blend: { ...state.blend, cB: next } });
+                        }}
+                        options={[
+                          { value: "ca_only", label: "Ca only (pH ~9.5–10)" },
+                          { value: "partial_mg", label: "Partial Mg (pH 10.5–11)" },
+                          { value: "excess_mg", label: "Max Mg (pH 11–11.3)" },
+                        ]}
+                      />
+                      <div />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <NumField label="Lime → CaCO₃ path" unit="mg/L lime" step={1} min={0} max={500}
+                        value={state.blend.cB.lime_caco3_mgL} onChange={v => setCB("lime_caco3_mgL", v)} />
+                      {(state.blend.cB.lime_mode ?? "ca_only") !== "ca_only" && (
+                        <NumField label="Lime → Mg(OH)₂ path" unit="mg/L lime" step={1} min={0} max={500}
+                          value={state.blend.cB.lime_mgoh2_mgL} onChange={v => setCB("lime_mgoh2_mgL", v)} />
+                      )}
+                    </div>
+                  </div>
+                )}
                 <NumField
                   label={state.blend.cB.upstream?.mode === "clarifier" || state.blend.cB.upstream?.mode === "measured_inlet"
                     ? "Filter aid (post-clarifier)"

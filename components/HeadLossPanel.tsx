@@ -34,6 +34,31 @@ export function HeadLossPanel({ result, title = "Head loss" }: { result: ShcResu
       </CardHeader>
       <CardBody className="space-y-4">
 
+        {/* Head budget breakdown — shows how the model partitioned h_T */}
+        <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2">
+          <div className="text-[11px] uppercase tracking-wide text-blue-800 font-medium mb-1">
+            Head budget breakdown
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div>
+              <div className="text-slate-600">Terminal limit (h_T)</div>
+              <div className="font-semibold tabular-nums">{fmt(result.h_T_total_used, 2)} m</div>
+            </div>
+            <div>
+              <div className="text-slate-600">Clean-bed h₀</div>
+              <div className="font-semibold tabular-nums text-amber-700">− {fmt(result.h0_used, 2)} m</div>
+            </div>
+            <div>
+              <div className="text-slate-600">Floc budget (Δh)</div>
+              <div className="font-semibold tabular-nums text-emerald-700">{fmt(result.dh_floc_budget, 2)} m</div>
+            </div>
+          </div>
+          <div className="text-[11px] text-blue-700 mt-1.5 leading-tight">
+            The model uses Δh = h_T − h₀ as the head available for floc accumulation. Adjust the
+            terminal limit, velocity, or media d_e to change this budget.
+          </div>
+        </div>
+
         {hl && (
           <div>
             <h4 className="text-xs font-semibold uppercase text-slate-600 tracking-wide mb-1.5">

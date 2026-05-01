@@ -22,7 +22,7 @@ export function CardBody({ children, className = "" }: { children: React.ReactNo
 }
 
 export function NumField({
-  label, value, onChange, unit, step = 0.01, min, max, hint, id,
+  label, value, onChange, unit, step = 0.01, min, max, hint, id, disabled = false,
 }: {
   label: string;
   value: number;
@@ -33,6 +33,7 @@ export function NumField({
   max?: number;
   hint?: string;
   id?: string;
+  disabled?: boolean;
 }) {
   const inputId = id || label.replace(/\s+/g, "-").toLowerCase();
   return (
@@ -48,10 +49,13 @@ export function NumField({
         step={step}
         min={min}
         max={max}
+        disabled={disabled}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded
+        className={`w-full px-3 py-1.5 text-sm border rounded tabular-nums
                    focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent
-                   bg-white tabular-nums"
+                   ${disabled
+                     ? "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed"
+                     : "bg-white border-slate-300"}`}
       />
       {hint ? <span className="block text-[11px] text-slate-400 mt-0.5">{hint}</span> : null}
     </label>
@@ -59,7 +63,7 @@ export function NumField({
 }
 
 export function Select<T extends string>({
-  label, value, onChange, options, hint, id,
+  label, value, onChange, options, hint, id, disabled = false,
 }: {
   label: string;
   value: T;
@@ -67,6 +71,7 @@ export function Select<T extends string>({
   options: { value: T; label: string }[];
   hint?: string;
   id?: string;
+  disabled?: boolean;
 }) {
   const inputId = id || label.replace(/\s+/g, "-").toLowerCase();
   return (
@@ -75,10 +80,13 @@ export function Select<T extends string>({
       <select
         id={inputId}
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value as T)}
-        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded
+        className={`w-full px-3 py-1.5 text-sm border rounded
                    focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent
-                   bg-white"
+                   ${disabled
+                     ? "bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed"
+                     : "bg-white border-slate-300"}`}
       >
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
